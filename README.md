@@ -6,29 +6,45 @@ This code implements a simple BASIC interpreter, currently it only supports floa
 The serial console is implemented using ANSI/VT100 drawing functions for colour and cursor movement.
 
 Requires:
+
 Arduino for ESP8266 
 
 Issues:
+
   Currently error reporting in the interpreter is badly implemented due to not having Exceptions.
 
 BASIC COMMANDS
 ---
 **REM** - comment line
+
 **LET** - assign value to a variable
+
 **IF THEN** - conditional statement
+
 **GOTO** - jump to line number
+
 **PRINT** - print text
+
 **PRINTLN** - print text as line
+
 **SLEEP** - sleep for x milli-seconds
+
 **CLS** - clear screen
+
 **MOVE** - move the cursor to the specified x,y position on the screen.
+
 **SET COLOUR** - set the text forecolour
+
 **SET BACK** - set the text background colour
 
 INTERPRETER COMMANDS
 ---
 **MEM** - show free memory
+
 **NEW** - clear current program
+
 **CLEAR** - reset interpreter state (reset variables)
+
 **LIST** - list current program
+
 **DEBUG** - enable debug mode (development)
