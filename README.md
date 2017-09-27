@@ -25,6 +25,10 @@ BASIC COMMANDS
 
 **GOSUB / RETURN** - go to line and then return
 
+**DO / LOOP WHILE/UNTIL** - loop until/while
+
+**FOR..NEXT** - for next loops"
+
 **PRINT** - print text
 
 **PRINTLN** - print text as line

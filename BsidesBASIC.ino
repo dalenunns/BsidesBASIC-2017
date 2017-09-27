@@ -608,6 +608,92 @@ void parse_do() {
   cursor = line.length();
 }
 
+void parse_for() {
+  if (!match_varname()) {
+    error_occurred("Variable Expected - FOR");
+    return;
+  }
+  token.toLowerCase();
+  String var_name = token;
+
+  if (DEBUG_MODE) {
+    print("var_name:");
+    println(var_name);
+    
+    print("cursor:");
+    println(String(cursor));
+    
+    print("line:");
+    println(line);
+  }
+
+  if (!match("=")) {
+    error_occurred("'=' expected - FOR");
+    return;
+  }
+
+  variables[var_name] = parse_expression();
+
+  if (!match_nocase("to")) {
+    error_occurred("'to' expected - FOR");
+    return;
+  }
+
+  int limit = parse_expression();
+  int step = 1;
+  if (match_nocase("step")) {
+    step = parse_expression();
+    if (step ==0) 
+    {
+      error_occurred("Infinite loop - FOR");
+      return;      
+    }
+  }
+
+  stack.push(current_line->first); //Add the current line number to the stack.
+  stack.push(limit);
+  stack.push(step);
+}
+
+void parse_next() {
+  if (!match_varname()) {
+    error_occurred("Variable Expected - NEXT");
+    return;
+  }
+  token.toLowerCase();
+  String var_name = token;
+
+  if (variables.find(token) == variables.end()) {
+    error_occurred("Variable not found - NEXT");
+    return;
+  } 
+
+  int step = stack.top();
+  stack.pop();
+  int limit = stack.top();
+  stack.pop();
+  int next_line_no = stack.top();
+  stack.pop();
+
+  variables[token] += step; //Add the step value to the variable.
+  bool done = false;
+
+  if (step >0) {
+    done = variables[token] > limit;
+  } else if (step <0) {
+    done = variables[token] < limit;
+  }
+
+  if (!done) {
+    current_line = program.find(next_line_no);
+    cursor=line.length();
+
+    stack.push(next_line_no);
+    stack.push(limit);
+    stack.push(step);
+  }
+}
+
 void parse_loop() {
   if (match_nocase("while")) {
     if (parse_disjunction()) {
@@ -727,6 +813,10 @@ void parse_statement()
     parse_do();
   else if (stmt.equalsIgnoreCase("loop"))
     parse_loop();
+  else if (stmt.equalsIgnoreCase("for"))
+    parse_for();
+  else if (stmt.equalsIgnoreCase("next"))
+    parse_next();
   else if (stmt.equalsIgnoreCase("rem"))
     cursor = line.length();
   else if (stmt.equalsIgnoreCase("set"))
