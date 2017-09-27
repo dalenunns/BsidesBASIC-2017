@@ -47,4 +47,12 @@ INTERPRETER COMMANDS
 
 **LIST** - list current program
 
+**LOAD** - load program from flash
+
+**SAVE** - save program to flash
+
+**DIR** - list files in flash
+
+**DEL** - delete specified file from flash
+
 **DEBUG** - enable debug mode (development)
