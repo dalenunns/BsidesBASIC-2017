@@ -603,6 +603,30 @@ void parse_return() {
   }
 }
 
+void parse_do() {
+  stack.push(current_line->first);
+  cursor = line.length();
+}
+
+void parse_loop() {
+  if (match_nocase("while")) {
+    if (parse_disjunction()) {
+      current_line = program.find(stack.top());
+      cursor = line.length();
+    } else {
+      stack.pop();
+    }
+  } else if (match_nocase("until")) {
+    if (parse_disjunction()) {
+      stack.pop();
+    } else {
+      current_line = program.find(stack.top());
+      cursor = line.length();
+    }
+  } else {
+    error_occurred("Condition Expected");
+  }
+}
 
 void set_foreColour(int c) {  
   if ((c > 7) && (c < 16)) {
@@ -699,6 +723,10 @@ void parse_statement()
     parse_return();    
   else if (stmt.equalsIgnoreCase("end"))
     parse_end();    
+  else if (stmt.equalsIgnoreCase("do"))
+    parse_do();
+  else if (stmt.equalsIgnoreCase("loop"))
+    parse_loop();
   else if (stmt.equalsIgnoreCase("rem"))
     cursor = line.length();
   else if (stmt.equalsIgnoreCase("set"))
@@ -790,7 +818,8 @@ void print_help() {
   println("  LET - assign value to a variable");
   println("  IF THEN - conditional statement");
   println("  GOTO - jump to line number");
-  println("  GOSUB / RETURN - go to line and then return")
+  println("  GOSUB / RETURN - go to line and then return");
+  println("  DO / LOOP WHILE/UNTIL - loop until/while");
   println("  PRINT - print text");
   println("  PRINTLN - print text as line");
   println("  SLEEP - sleep for x milli-seconds");
@@ -798,7 +827,7 @@ void print_help() {
   println("  MOVE - move the cursor to the specified x,y position on the screen.");
   println("  SET COLOUR - set the text forecolour");
   println("  SET BACK - set the text background colour");
-  println("  END - specify the end of a program")
+  println("  END - specify the end of a program");
   println("");
   println("INTERPRETER COMMANDS");
   println("  MEM - show free memory");
