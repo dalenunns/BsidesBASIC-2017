@@ -1,4 +1,5 @@
 #include <map>
+#include <stack>
 #include <cctype>
 #include <algorithm>
 #include "FS.h"
@@ -58,6 +59,8 @@ String token;
 std::map<String, float> variables;
 std::map<int, String> program;
 std::map<int, String>::iterator current_line;
+std::stack<int> stack;
+
 bool DEBUG_MODE = false;
 
 void skip_whitespace()
@@ -567,6 +570,7 @@ void parse_goto()
   if (program.find(line_num) != program.end())
   {
     current_line = program.find(line_num);
+    cursor= (current_line->second).length(); //Makes sure it ignores everything else on a line eg: 10 GOTO 20: Print "hi" (Print "hi" won't get run)
   }
   else
   {
@@ -574,6 +578,31 @@ void parse_goto()
     //throw runtime_error("Line not found");
   }
 }
+
+void parse_gosub() {
+  int line_num = parse_expression();
+  if (program.find(line_num) != program.end())
+  {
+    stack.push(current_line->first); //Store the current position of the application in the stack
+    current_line = program.find(line_num);
+  } else {
+    error_occurred("Line not found");
+  }
+} 
+
+void parse_end() {
+  current_line = program.end();
+}
+
+void parse_return() {
+  if (stack.size() > 0) {
+    current_line = program.find(stack.top()); //Get the last position off the stack so the program can continue from that point.
+    stack.pop();
+  } else {
+    error_occurred("Stack underflow");
+  }
+}
+
 
 void set_foreColour(int c) {  
   if ((c > 7) && (c < 16)) {
@@ -664,6 +693,12 @@ void parse_statement()
     parse_if();
   else if (stmt.equalsIgnoreCase("goto"))
     parse_goto();
+  else if (stmt.equalsIgnoreCase("gosub"))
+    parse_gosub();
+  else if (stmt.equalsIgnoreCase("return"))
+    parse_return();    
+  else if (stmt.equalsIgnoreCase("end"))
+    parse_end();    
   else if (stmt.equalsIgnoreCase("rem"))
     cursor = line.length();
   else if (stmt.equalsIgnoreCase("set"))
@@ -755,6 +790,7 @@ void print_help() {
   println("  LET - assign value to a variable");
   println("  IF THEN - conditional statement");
   println("  GOTO - jump to line number");
+  println("  GOSUB / RETURN - go to line and then return")
   println("  PRINT - print text");
   println("  PRINTLN - print text as line");
   println("  SLEEP - sleep for x milli-seconds");
@@ -762,6 +798,7 @@ void print_help() {
   println("  MOVE - move the cursor to the specified x,y position on the screen.");
   println("  SET COLOUR - set the text forecolour");
   println("  SET BACK - set the text background colour");
+  println("  END - specify the end of a program")
   println("");
   println("INTERPRETER COMMANDS");
   println("  MEM - show free memory");

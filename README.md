@@ -23,6 +23,8 @@ BASIC COMMANDS
 
 **GOTO** - jump to line number
 
+**GOSUB / RETURN** - go to line and then return
+
 **PRINT** - print text
 
 **PRINTLN** - print text as line
@@ -36,6 +38,8 @@ BASIC COMMANDS
 **SET COLOUR** - set the text forecolour
 
 **SET BACK** - set the text background colour
+
+**END** - Specify the end of a program
 
 INTERPRETER COMMANDS
 ---
