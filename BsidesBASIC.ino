@@ -1,6 +1,7 @@
 #include <map>
 #include <cctype>
 #include <algorithm>
+#include "FS.h"
 
 /*
  * BSides Cape Town - BASIC for ESP8266
@@ -521,9 +522,16 @@ void parse_line()
     int linenum = line.substring(mark, cursor).toInt();
     skip_whitespace();
     program[linenum] = line.substring(cursor);
+
+    if (DEBUG_MODE) {
+      println("["+String(linenum)+"] "+line.substring(cursor));
+    }
   }
   else
   {
+    if (DEBUG_MODE) {
+      println(">>"+line+"<<");
+    }
     parse_block();
   }
 }
@@ -760,12 +768,81 @@ void print_help() {
   println("  NEW - clear current program");
   println("  CLEAR - reset interpreter state (reset variables)");
   println("  LIST - list current program");
-  println("  DEBUG - enable debug mode (development)");
+  println("  LOAD - load program from flash");
+  println("  SAVE - save program to flash");
+  println("  DIR - list files in flash");
+  println("  DEL - delete specified file from flash");
+  println("  DEBUG - enable debug mode (development)");  
   println("");
 }
 
 void test_code() {
   Serial.println("\x1b[31m Test Print \x1b[0m");
+}
+
+void load_program() {
+  program.clear(); //Clear the current in memory program
+  SPIFFS.begin();
+  String file = parse_value();
+  if (SPIFFS.exists(file)) {
+    File loadFile = SPIFFS.open(file,"r");
+    while (loadFile.available()) {
+      cursor=0;
+      line = loadFile.readStringUntil('\n');      
+      line.trim();
+      parse_line();
+    }
+    println("LOADED");
+    loadFile.close();
+  } else {
+    println(file+" - FILE NOT FOUND");
+  }
+  SPIFFS.end();
+}
+
+void printAsHex(String s) {
+  for (int i=0; i<s.length();i++) {
+    Serial.print((byte)s[i],HEX);
+    Serial.print(" ");
+  }
+  Serial.println();
+}
+
+void save_program() {
+  SPIFFS.begin();
+  String file = parse_value();
+  File saveFile = SPIFFS.open(file,"w");
+  for (auto const &item : program)
+  {
+    saveFile.print(String(item.first));
+    saveFile.print(" ");
+    saveFile.println(item.second);
+  }
+  println("SAVED");
+  saveFile.close();
+  SPIFFS.end();
+}
+
+void dir() {
+  SPIFFS.begin();
+  Dir dir = SPIFFS.openDir("");
+  while(dir.next()) {
+    println(dir.fileName());
+  }
+  SPIFFS.end();
+}
+
+void del() {
+  SPIFFS.begin();
+  String file = parse_value();
+  if (SPIFFS.exists(file)) {
+    if (SPIFFS.remove(file)) {
+      println(file+" - DELETED");  
+    }
+  } else {
+    println(file+" - FILE NOT FOUND");
+  }
+  SPIFFS.end();
 }
 
 void loop()
@@ -820,6 +897,14 @@ void loop()
   } else if (match_nocase("test")) {
     //TODO: remove this code later -- Just dev/test code
     test_code();
+  } else if (match_nocase("save")) {
+    save_program();
+  } else if (match_nocase("load")) {
+    load_program();
+  } else if (match_nocase("dir")) {
+    dir();
+  } else if (match_nocase("del")) {
+    del();
   }
   else
   {
