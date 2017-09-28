@@ -1,5 +1,6 @@
 #include <map>
 #include <stack>
+#include <list>
 #include <cctype>
 #include <algorithm>
 #include "FS.h"
@@ -60,6 +61,7 @@ std::map<String, float> variables;
 std::map<int, String> program;
 std::map<int, String>::iterator current_line;
 std::stack<int> stack;
+std::map<String, std::list<float>> function_args;
 
 bool DEBUG_MODE = false;
 
@@ -350,26 +352,57 @@ float parse_term()
   return t1;
 }
 
+std::list<float> parse_args() {
+  if (match("(")) {
+    if (match(")")) {
+      return std::list<float>();
+    }
+    std::list<float> args (parse_expression());
+    while (match(",")) {
+      args.push_back(parse_expression());
+    }
+    if (match(")")){
+      return args;
+    } else {
+      error_occurred("Syntax Error Missing ')'");
+    }
+  } else {
+    return std::list<float>();
+  }
+}
+
 float parse_factor()
 {
+  int signnum = 1;
+  if (match("-")) 
+  {
+    signnum = -1;
+  }
+
   if (match_number())
   {
-    return token.toFloat();
+    return token.toFloat() * signnum;
   }
   else if (match_varname())
   {
     token.toLowerCase();
-    if (variables.find(token) != variables.end())
-      return variables[token];
-    else
+    if (function_args.find(token) != function_args.end()) {
+      std::list<float> args = parse_args();
+      return call_fn(token, args) * signnum;
+    }
+    else if (variables.find(token) != variables.end()) {
+      return variables[token] * signnum;      
+    } else {
       error_occurred("Var not found");
-    //throw runtime_error("Var not found");
+      //throw runtime_error("Var not found");
+    }
+    
   }
   else if (match("("))
   {
     float value = parse_expression();
     if (match(")"))
-      return value;
+      return value * signnum;
     else
       error_occurred("Missing ')')");
     //throw runtime_error("Missing ')'");
@@ -378,6 +411,16 @@ float parse_factor()
   {
     error_occurred("Expression Expected");
     //throw runtime_error("Expression expected");
+  }
+}
+
+float call_fn(String name, std::list<float> args) {
+  if (args.size() != function_args[name].size()) {
+    error_occurred("Bad argument count");
+  } else if (name == "rnd") {
+    return random(1000);
+  } else {
+    error_occurred("Unknown function");
   }
 }
 
@@ -890,6 +933,8 @@ void setup()
   println("");
   println("BsidesBASIC v0.31.337 READY");
   printFreeRAM();
+
+  function_args["rnd"] = std::list<float>();
 }
 
 int freeRam()
@@ -910,6 +955,7 @@ void print_help() {
   println("  GOTO - jump to line number");
   println("  GOSUB / RETURN - go to line and then return");
   println("  DO / LOOP WHILE/UNTIL - loop until/while");
+  println("  FOR..NEXT - for next loops");
   println("  PRINT - print text");
   println("  PRINTLN - print text as line");
   println("  SLEEP - sleep for x milli-seconds");
