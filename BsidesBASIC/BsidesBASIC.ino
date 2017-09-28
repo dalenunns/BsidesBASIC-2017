@@ -3,7 +3,9 @@
 #include <list>
 #include <cctype>
 #include <algorithm>
-#include "FS.h"
+#include <FS.h>
+
+#include "BsidesBASIC.h"
 
 /*
  * BSides Cape Town - BASIC for ESP8266
