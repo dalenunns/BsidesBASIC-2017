@@ -11,7 +11,6 @@
  * BSides Cape Town - BASIC for ESP8266
  * By Dale Nunns (dale@stuff.za.net)
  *
- *
  * This code implements a simple BASIC interpreter, currently it only supports floats.
  * The serial console is implemented using ANSI/VT100 drawing functions for colour and cursor movement.
  *
@@ -21,40 +20,8 @@
  * Issues:
  *   Currently error reporting in the interpreter is badly implemented due to not having Exceptions.
  *
- * BASIC COMMANDS
- * --------------------------------------------------------------------------------------------- 
- *  REM - comment line
- *  LET - assign value to a variable
- *  IF THEN - conditional statement
- *  GOTO - jump to line number
- *  PRINT - print text
- *  PRINTLN - print text as line
- *  SLEEP - sleep for x milli-seconds
- *  CLS - clear screen
- *  MOVE - move the cursor to the specified x,y position on the screen.
- *  SET COLOUR - set the text forecolour
- *  SET BACK - set the text background colour
- *
- * INTERPRETER COMMANDS
- * ---------------------------------------------------------------------------------------------
- *  MEM - show free memory
- *  NEW - clear current program
- *  CLEAR - reset interpreter state (reset variables)
- *  LIST - list current program
- *  DEBUG - enable debug mode (development)
  *
  */
-
-float parse_term();
-bool match_add_sub();
-float parse_factor();
-bool match_mul_div();
-float parse_conjunction();
-bool match_nocase(String kw);
-float parse_negation();
-bool match_relation();
-float parse_expression();
-void parse_statement();
 
 String line = "";
 int cursor = 0;
@@ -66,6 +33,153 @@ std::stack<int> stack;
 std::map<String, std::list<float>> function_args;
 
 bool DEBUG_MODE = false;
+
+/*
+ *
+ * Main Arduino setup() method.
+ * 
+ */
+void setup()
+{
+  Serial.begin(9600); //Serial port is currently set to 9600 Baud for the Serial Console.
+  Serial.setTimeout(100000); //Timeout needs to be set higher than usual otherwise you can get timeouts waiting for keys etc.
+  
+  delay(500); //Small delay to give the serial a chance to start.
+
+  //Pre-populate array with valid functions.
+  //TODO: Change this as its a waist of memory in its current form.
+  function_args["rnd"] = std::list<float>(); 
+
+  //Setup output/input pins
+  //TODO: Need to change this to something that can be specified in the interpreter.
+  pinMode(LED_BUILTIN, OUTPUT);
+
+  //Display Startup Header on Serial interface.
+  printStartupHeader();
+}
+
+/*
+ *
+ * Main Arduino loop() method.
+ * 
+ * Main application code is in this method.
+ */
+void loop()
+{
+  //Display the '>' prompt and wait for input
+  print("> ");
+  line = gettermline();
+  println("");
+
+  cursor = 0;
+
+  if (match_nocase("debug")) {
+    DEBUG_MODE = !DEBUG_MODE;
+    if (DEBUG_MODE) {
+      println("DEBUG_MODE ON");
+    } else {
+      println("DEBUG_MODE OFF");
+    }
+  }
+  else if (match_nocase("mem"))
+  {
+    printFreeRAM();
+  }
+  else if (match_nocase("list"))
+  {
+    list_program();
+  }
+  else if (match_nocase("run"))
+  {
+    run_program();
+  }
+  else if (match_nocase("clear"))
+  {
+    variables.clear();
+  }
+  else if (match_nocase("new"))
+  {
+    program.clear();
+  } 
+  else if (match_nocase("help")) 
+  {
+    print_help();
+  } 
+  else if (match_nocase("save")) 
+  {
+    save_program();
+  } 
+  else if (match_nocase("load")) 
+  {
+    load_program();
+  } 
+  else if (match_nocase("dir")) 
+  {
+    dir();
+  } 
+  else if (match_nocase("del")) 
+  {
+    del();
+  }
+  else
+  {
+    //If the text entered isn't a Interpreter command assume its a line of BASIC code to be parsed.
+    parse_line();
+  }
+}
+
+void parse_statement()
+{
+  if (!match_keyword())
+    error_occurred("Syntax Error - Statement Expected");
+  //throw runtime_error("Syntax Error - Statement Excpected"); //TODO Change this to a custom exception
+
+  String stmt = token;
+
+  if (stmt.equalsIgnoreCase("let"))
+    parse_let();
+  else if (stmt.equalsIgnoreCase("print"))
+    parse_print();
+  else if (stmt.equalsIgnoreCase("println"))
+    parse_println();
+  else if (stmt.equalsIgnoreCase("if"))
+    parse_if();
+  else if (stmt.equalsIgnoreCase("goto"))
+    parse_goto();
+  else if (stmt.equalsIgnoreCase("gosub"))
+    parse_gosub();
+  else if (stmt.equalsIgnoreCase("return"))
+    parse_return();    
+  else if (stmt.equalsIgnoreCase("end"))
+    parse_end();    
+  else if (stmt.equalsIgnoreCase("do"))
+    parse_do();
+  else if (stmt.equalsIgnoreCase("loop"))
+    parse_loop();
+  else if (stmt.equalsIgnoreCase("for"))
+    parse_for();
+  else if (stmt.equalsIgnoreCase("next"))
+    parse_next();
+  else if (stmt.equalsIgnoreCase("rem"))
+    cursor = line.length();
+  else if (stmt.equalsIgnoreCase("set"))
+    parse_set();    
+  else if (stmt.equalsIgnoreCase("cls"))
+    parse_cls();
+  else if (stmt.equalsIgnoreCase("move"))
+    parse_move();
+  else if (stmt.equalsIgnoreCase("sleep"))
+    parse_sleep();
+  else
+    error_occurred("Unknown Statement");
+  //throw runtime_error("Unknown Statement");
+}
+
+void printStartupHeader() {
+  println("");
+  println("BsidesBASIC v0.31.337 READY");
+  printFreeRAM();
+}
 
 void skip_whitespace()
 {
@@ -830,53 +944,6 @@ void parse_cls() {
   Serial.printf("\x1b[2J \x1b[0;0H");
 }
 
-void parse_statement()
-{
-  if (!match_keyword())
-    error_occurred("Syntax Error - Statement Expected");
-  //throw runtime_error("Syntax Error - Statement Excpected"); //TODO Change this to a custom exception
-
-  String stmt = token;
-
-  if (stmt.equalsIgnoreCase("let"))
-    parse_let();
-  else if (stmt.equalsIgnoreCase("print"))
-    parse_print();
-  else if (stmt.equalsIgnoreCase("println"))
-    parse_println();
-  else if (stmt.equalsIgnoreCase("if"))
-    parse_if();
-  else if (stmt.equalsIgnoreCase("goto"))
-    parse_goto();
-  else if (stmt.equalsIgnoreCase("gosub"))
-    parse_gosub();
-  else if (stmt.equalsIgnoreCase("return"))
-    parse_return();    
-  else if (stmt.equalsIgnoreCase("end"))
-    parse_end();    
-  else if (stmt.equalsIgnoreCase("do"))
-    parse_do();
-  else if (stmt.equalsIgnoreCase("loop"))
-    parse_loop();
-  else if (stmt.equalsIgnoreCase("for"))
-    parse_for();
-  else if (stmt.equalsIgnoreCase("next"))
-    parse_next();
-  else if (stmt.equalsIgnoreCase("rem"))
-    cursor = line.length();
-  else if (stmt.equalsIgnoreCase("set"))
-    parse_set();    
-  else if (stmt.equalsIgnoreCase("cls"))
-    parse_cls();
-  else if (stmt.equalsIgnoreCase("move"))
-    parse_move();
-  else if (stmt.equalsIgnoreCase("sleep"))
-    parse_sleep();
-  else
-    error_occurred("Unknown Statement");
-  //throw runtime_error("Unknown Statement");
-}
-
 void print(String s)
 {
   Serial.print(s);
@@ -926,22 +993,17 @@ void error_occurred(String msg)
   Serial.println(msg);
 }
 
-void setup()
-{
-  Serial.begin(9600);
-  Serial.setTimeout(100000);
-  pinMode(LED_BUILTIN, OUTPUT);
-  delay(500);
-  println("");
-  println("BsidesBASIC v0.31.337 READY");
-  printFreeRAM();
-
-  function_args["rnd"] = std::list<float>();
-}
-
 int freeRam()
 {
   return ESP.getFreeHeap();
+}
+
+void printAsHex(String s) {
+  for (int i=0; i<s.length();i++) {
+    Serial.print((byte)s[i],HEX);
+    Serial.print(" ");
+  }
+  Serial.println();
 }
 
 void printFreeRAM() {
@@ -980,10 +1042,6 @@ void print_help() {
   println("");
 }
 
-void test_code() {
-  Serial.println("\x1b[31m Test Print \x1b[0m");
-}
-
 void load_program() {
   program.clear(); //Clear the current in memory program
   SPIFFS.begin();
@@ -1002,14 +1060,6 @@ void load_program() {
     println(file+" - FILE NOT FOUND");
   }
   SPIFFS.end();
-}
-
-void printAsHex(String s) {
-  for (int i=0; i<s.length();i++) {
-    Serial.print((byte)s[i],HEX);
-    Serial.print(" ");
-  }
-  Serial.println();
 }
 
 void save_program() {
@@ -1047,71 +1097,4 @@ void del() {
     println(file+" - FILE NOT FOUND");
   }
   SPIFFS.end();
-}
-
-void loop()
-{
-  digitalWrite(LED_BUILTIN, LOW);
-  print("> ");
-  line = gettermline();
-  println("");
-
-  if (DEBUG_MODE)
-  {
-    print("Line:[");
-    print(line);
-    print("]");
-    println("");
-  }
-
-  digitalWrite(LED_BUILTIN, HIGH);
-  cursor = 0;
-  if (match_nocase("bye"))
-  {
-  }
-  else if (match_nocase("debug")) {
-    DEBUG_MODE = !DEBUG_MODE;
-    if (DEBUG_MODE) {
-      println("DEBUG_MODE ON");
-    } else {
-      println("DEBUG_MODE OFF");
-    }
-  }
-  else if (match_nocase("mem"))
-  {
-    printFreeRAM();
-  }
-  else if (match_nocase("list"))
-  {
-    list_program();
-  }
-  else if (match_nocase("run"))
-  {
-    run_program();
-  }
-  else if (match_nocase("clear"))
-  {
-    variables.clear();
-  }
-  else if (match_nocase("new"))
-  {
-    program.clear();
-  } else if (match_nocase("help")) {
-    print_help();
-  } else if (match_nocase("test")) {
-    //TODO: remove this code later -- Just dev/test code
-    test_code();
-  } else if (match_nocase("save")) {
-    save_program();
-  } else if (match_nocase("load")) {
-    load_program();
-  } else if (match_nocase("dir")) {
-    dir();
-  } else if (match_nocase("del")) {
-    del();
-  }
-  else
-  {
-    parse_line();
-  }
 }
