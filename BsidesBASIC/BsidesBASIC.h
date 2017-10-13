@@ -41,6 +41,7 @@ void parse_set();
 void parse_move();
 void parse_sleep();
 void parse_cls();
+void parse_led();
 
 //Interpreter Commands
 void list_program();

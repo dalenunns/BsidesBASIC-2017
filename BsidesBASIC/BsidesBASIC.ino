@@ -5,6 +5,9 @@
 #include <algorithm>
 #include <FS.h>
 
+#define FASTLED_ESP8266_RAW_PIN_ORDER //Sets the Pin Order to RAW mode see https://github.com/FastLED/FastLED/wiki/ESP8266-notes
+#include "FastLED.h"
+
 #include "BsidesBASIC.h"
 
 /*
@@ -15,13 +18,17 @@
  * The serial console is implemented using ANSI/VT100 drawing functions for colour and cursor movement.
  *
  * Requires:
- *   Arduino for ESP8266 
+ *   Arduino for ESP8266
+ *   FastLED (using the one in the Arduino Libraries)
  *
  * Issues:
  *   Currently error reporting in the interpreter is badly implemented due to not having Exceptions.
  *
  *
  */
+
+#define NUM_LEDS 12 //TODO: Change this to match flux-capacitor design
+CRGB leds[NUM_LEDS];
 
 String line = "";
 int cursor = 0;
@@ -50,9 +57,9 @@ void setup()
   //TODO: Change this as its a waist of memory in its current form.
   function_args["rnd"] = std::list<float>(); 
 
-  //Setup output/input pins
-  //TODO: Need to change this to something that can be specified in the interpreter.
-  pinMode(LED_BUILTIN, OUTPUT);
+  //Setup WS2812's on pin GPIO 12 (assuming RAW pin layout)
+  //TODO: Check with @elasticninja the exact details of the leds.
+  FastLED.addLeds<NEOPIXEL, 12>(leds, NUM_LEDS); 
 
   //Display Startup Header on Serial interface.
   printStartupHeader();
@@ -169,7 +176,9 @@ void parse_statement()
   else if (stmt.equalsIgnoreCase("move"))
     parse_move();
   else if (stmt.equalsIgnoreCase("sleep"))
-    parse_sleep();
+    parse_sleep();  
+  else if (stmt.equalsIgnoreCase("led"))
+    parse_led();
   else
     error_occurred("Unknown Statement");
   //throw runtime_error("Unknown Statement");
@@ -944,6 +953,67 @@ void parse_cls() {
   Serial.printf("\x1b[2J \x1b[0;0H");
 }
 
+void parse_led() {
+  bool on = false;  
+
+  int r = 0;
+  int g = 0;
+  int b = 0;
+
+  skip_whitespace();
+  if (match_nocase("on")) {
+    on = true;
+  } else if (match_nocase("off")) {
+    on = false;
+  }
+  
+  if (!match(",")) {
+    error_occurred("Missing ,");
+    return;
+  }
+
+  int ledNo = parse_expression();
+
+  skip_whitespace();
+  if (match(",")) {
+    skip_whitespace();
+    if (match_nocase("rgb")) {
+      skip_whitespace();
+      if (!match("(")) {
+        error_occurred("Missing (");
+        return;
+      }
+      skip_whitespace();
+      r = parse_expression();
+      
+      if (!match(",")) {
+        error_occurred("Missing ,");
+        return;
+      }
+      skip_whitespace();
+      g = parse_expression();
+      
+      if (!match(",")) {
+        error_occurred("Missing ,");
+        return;
+      }
+      skip_whitespace();
+      b = parse_expression();
+      
+      if (!match(")")) {
+        error_occurred("Missing )");
+        return;
+      }
+    }
+  }
+
+  if (on)
+    leds[ledNo].setRGB(r,g,b);
+  else
+    leds[ledNo] = CRGB::Black;
+  FastLED.show();
+}
+
 void print(String s)
 {
   Serial.print(s);
@@ -1028,6 +1098,7 @@ void print_help() {
   println("  SET COLOUR - set the text forecolour");
   println("  SET BACK - set the text background colour");
   println("  END - specify the end of a program");
+  println("  LED ON/OFF - turn an LED on/off")
   println("");
   println("INTERPRETER COMMANDS");
   println("  MEM - show free memory");
