@@ -43,7 +43,9 @@ BASIC COMMANDS
 
 **SET BACK** - set the text background colour
 
-**END** - Specify the end of a program
+**END** - Specify the end of a 
+
+**LED ON/OFF** - turn an LED on/off 
 
 INTERPRETER COMMANDS
 ---
