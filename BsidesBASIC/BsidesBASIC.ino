@@ -33,7 +33,9 @@ CRGB leds[NUM_LEDS];
 String line = "";
 int cursor = 0;
 String token;
-std::map<String, float> variables_float;
+std::map<String, float> variables_float; //Holds all the float variables in BASIC
+std::map<String, String> variables_string; //Holds all the string variables in BASIC
+
 std::map<int, String> program;
 std::map<int, String>::iterator current_line;
 std::stack<int> stack;
@@ -103,6 +105,7 @@ void loop()
   else if (match_nocase("clear"))
   {
     variables_float.clear();
+    variables_string.clear();
   }
   else if (match_nocase("new"))
   {
@@ -237,7 +240,7 @@ bool match_number()
   return true;
 }
 
-bool match_varname()
+bool match_float_varname()
 {
   skip_whitespace();
 
@@ -249,6 +252,26 @@ bool match_varname()
     cursor++;
 
   token = line.substring(mark, cursor);
+  return true;
+}
+
+bool match_string_varname() 
+{
+  skip_whitespace();
+
+  if (cursor >= line.length() || line[cursor] != '$') //All string variables start with $
+    return false;
+  
+  int mark = cursor;
+  while(cursor < line.length() && (isalnum(line[cursor]) || line[cursor]=='$'))
+    cursor ++;
+  
+  if (DEBUG_MODE) {
+    println("mark:"+String(mark));
+    println("cursor:"+String(cursor));
+  }
+
+  token = line.substring(mark,cursor);  
   return true;
 }
 
@@ -508,7 +531,7 @@ float parse_factor()
   {
     return token.toFloat() * signnum;
   }
-  else if (match_varname())
+  else if (match_float_varname())
   {
     token.toLowerCase();
     if (function_args.find(token) != function_args.end()) {
@@ -587,7 +610,34 @@ bool match_mul_div()
 
 bool parse_let()
 {
-  if (!match_varname())
+
+  if (match_string_varname()) {
+    String var_name = String(token);
+    var_name.toLowerCase();
+
+    if(DEBUG_MODE) {
+      println("var_name:"+var_name);
+      println("cursor:"+String(cursor));
+    }
+  
+    if (!match("="))
+    {
+      error_occurred("'=' expected");
+      //throw runtime_error("'=' expected");
+      return false;
+    }
+  
+    if (!match_string()) 
+    {
+      error_occurred(" no string found");
+      return false;
+    }
+
+    variables_string[var_name] = token;
+    return true;
+  }
+
+  else if (!match_float_varname())
   {
     error_occurred("Variable expected");
     //throw runtime_error("Variable expected");
@@ -612,6 +662,10 @@ String parse_value()
 {
   if (match_string())
     return token;
+  else if (match_string_varname()) {
+    if (variables_string.find(token) != variables_string.end()) 
+      return variables_string[token]; 
+  }
   else
     return String(parse_expression());
 }
@@ -777,7 +831,7 @@ void parse_do() {
 }
 
 void parse_for() {
-  if (!match_varname()) {
+  if (!match_float_varname()) {
     error_occurred("Variable Expected - FOR");
     return;
   }
@@ -824,7 +878,7 @@ void parse_for() {
 }
 
 void parse_next() {
-  if (!match_varname()) {
+  if (!match_float_varname()) {
     error_occurred("Variable Expected - NEXT");
     return;
   }
