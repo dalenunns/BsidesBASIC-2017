@@ -33,7 +33,7 @@ CRGB leds[NUM_LEDS];
 String line = "";
 int cursor = 0;
 String token;
-std::map<String, float> variables;
+std::map<String, float> variables_float;
 std::map<int, String> program;
 std::map<int, String>::iterator current_line;
 std::stack<int> stack;
@@ -102,7 +102,7 @@ void loop()
   }
   else if (match_nocase("clear"))
   {
-    variables.clear();
+    variables_float.clear();
   }
   else if (match_nocase("new"))
   {
@@ -515,8 +515,8 @@ float parse_factor()
       std::list<float> args = parse_args();
       return call_fn(token, args) * signnum;
     }
-    else if (variables.find(token) != variables.end()) {
-      return variables[token] * signnum;      
+    else if (variables_float.find(token) != variables_float.end()) {
+      return variables_float[token] * signnum;      
     } else {
       error_occurred("Var not found");
       //throw runtime_error("Var not found");
@@ -604,7 +604,7 @@ bool parse_let()
     return false;
   }
 
-  variables[var_name] = parse_expression();
+  variables_float[var_name] = parse_expression();
   return true;
 }
 
@@ -800,7 +800,7 @@ void parse_for() {
     return;
   }
 
-  variables[var_name] = parse_expression();
+  variables_float[var_name] = parse_expression();
 
   if (!match_nocase("to")) {
     error_occurred("'to' expected - FOR");
@@ -831,7 +831,7 @@ void parse_next() {
   token.toLowerCase();
   String var_name = token;
 
-  if (variables.find(token) == variables.end()) {
+  if (variables_float.find(token) == variables_float.end()) {
     error_occurred("Variable not found - NEXT");
     return;
   } 
@@ -843,13 +843,13 @@ void parse_next() {
   int next_line_no = stack.top();
   stack.pop();
 
-  variables[token] += step; //Add the step value to the variable.
+  variables_float[token] += step; //Add the step value to the variable.
   bool done = false;
 
   if (step >0) {
-    done = variables[token] > limit;
+    done = variables_float[token] > limit;
   } else if (step <0) {
-    done = variables[token] < limit;
+    done = variables_float[token] < limit;
   }
 
   if (!done) {
@@ -1098,7 +1098,7 @@ void print_help() {
   println("  SET COLOUR - set the text forecolour");
   println("  SET BACK - set the text background colour");
   println("  END - specify the end of a program");
-  println("  LED ON/OFF - turn an LED on/off")
+  println("  LED ON/OFF - turn an LED on/off");
   println("");
   println("INTERPRETER COMMANDS");
   println("  MEM - show free memory");
