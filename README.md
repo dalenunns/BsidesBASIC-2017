@@ -13,6 +13,15 @@ Issues:
 
   Currently error reporting in the interpreter is badly implemented due to not having Exceptions.
 
+<<<<<<< HEAD
+=======
+To do:
+  RF - Interface to RF badge + rfcat functions.
+  INPUT command - some way to receive text input.
+  GETKEY command - some way to get keypresses.
+  CTRL+BREAK (C) - be able to BREAK a running app.
+
+>>>>>>> 4170454a8047ea3cd56f7f366c06b320ed84297a
 BASIC COMMANDS
 ---
 **REM** - comment line
