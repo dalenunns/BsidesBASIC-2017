@@ -27,7 +27,7 @@
  *
  */
 
-#define NUM_LEDS 12 //TODO: Change this to match flux-capacitor design
+#define NUM_LEDS 15 //TODO: Change this to match flux-capacitor design
 CRGB leds[NUM_LEDS];
 
 String line = "";
@@ -130,6 +130,10 @@ void loop()
   else if (match_nocase("del")) 
   {
     del();
+  } else if (match_nocase("format")) {
+    format();
+  } else if (match_nocase("flash")) {
+    flash_info();
   }
   else
   {
@@ -1188,18 +1192,19 @@ void load_program() {
 }
 
 void save_program() {
-  SPIFFS.begin();
-  String file = parse_value();
-  File saveFile = SPIFFS.open(file,"w");
-  for (auto const &item : program)
-  {
-    saveFile.print(String(item.first));
-    saveFile.print(" ");
-    saveFile.println(item.second);
-  }
-  println("SAVED");
-  saveFile.close();
-  SPIFFS.end();
+  if (SPIFFS.begin()) {
+    String file = parse_value();
+    File saveFile = SPIFFS.open(file,"w");
+    for (auto const &item : program)
+    {
+      saveFile.print(String(item.first));
+      saveFile.print(" ");
+      saveFile.println(item.second);
+    }
+    println("SAVED");
+    saveFile.close();
+    SPIFFS.end();
+  } else {println("SAVE FAILED");}
 }
 
 void dir() {
@@ -1222,4 +1227,22 @@ void del() {
     println(file+" - FILE NOT FOUND");
   }
   SPIFFS.end();
+}
+
+void format() {
+  if (SPIFFS.format()) {
+    println("Format Complete");
+  } else {
+    println("Format FAILED!");
+  }
+}
+
+void flash_info() {
+  println("Flash Chip Info:");
+  println(" ID:"+String(ESP.getFlashChipId()));
+  println(" Size:"+String(ESP.getFlashChipSize()));
+  println(" Real Size:"+String(ESP.getFlashChipRealSize()));
+  println(" Speed:"+String(ESP.getFlashChipSpeed()));
+  println(" Size by Chip ID:"+String(ESP.getFlashChipSizeByChipId()));
+  println(" Mode:"+String(ESP.getFlashChipMode()));
 }
