@@ -7,8 +7,9 @@ The serial console is implemented using ANSI/VT100 drawing functions for colour 
 
 Requires:
 
-Arduino for ESP8266 - 2.4.0-rc2 https://github.com/esp8266/Arduino/releases
-FastLED
+-ESP8266 Board Support for Arduino - 2.4.0-rc2 https://github.com/esp8266/Arduino/releases
+-ESPAsyncWebServer https://github.com/me-no-dev/ESPAsyncWebServer
+-FastLED
 
 Issues:
 

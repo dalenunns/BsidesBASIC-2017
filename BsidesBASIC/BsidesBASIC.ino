@@ -5,27 +5,34 @@
 #include <algorithm>
 #include <FS.h>
 
+//Wifi related functions
+#include <ESP8266WiFi.h>
+#include <WiFiClient.h>
+#include <ESPAsyncTCP.h>
+#include <ESPAsyncWebServer.h>
+
+//FastLED library to control LED's
 #define FASTLED_ESP8266_RAW_PIN_ORDER //Sets the Pin Order to RAW mode see https://github.com/FastLED/FastLED/wiki/ESP8266-notes
 #include "FastLED.h"
 
 #include "BsidesBASIC.h"
 
 /*
- * BSides Cape Town - BASIC for ESP8266
- * By Dale Nunns (dale@stuff.za.net)
- *
- * This code implements a simple BASIC interpreter, currently it only supports floats.
- * The serial console is implemented using ANSI/VT100 drawing functions for colour and cursor movement.
- *
- * Requires:
- *   Arduino for ESP8266
- *   FastLED (using the one in the Arduino Libraries)
- *
- * Issues:
- *   Currently error reporting in the interpreter is badly implemented due to not having Exceptions.
- *
- *
- */
+   BSides Cape Town - BASIC for ESP8266
+   By Dale Nunns (dale@stuff.za.net)
+
+   This code implements a simple BASIC interpreter, currently it only supports floats.
+   The serial console is implemented using ANSI/VT100 drawing functions for colour and cursor movement.
+
+   Requires:
+     Arduino for ESP8266
+     FastLED (using the one in the Arduino Libraries)
+
+   Issues:
+     Currently error reporting in the interpreter is badly implemented due to not having Exceptions.
+
+
+*/
 
 #define NUM_LEDS 15 //TODO: Change this to match flux-capacitor design
 CRGB leds[NUM_LEDS];
@@ -43,36 +50,86 @@ std::map<String, std::list<float>> function_args;
 
 bool DEBUG_MODE = false;
 
+//Wifi / WebServer Code
+const char *ssid = "ESPap";
+const char * hostName = "esp-async";
+
+AsyncWebServer server(80);
+AsyncWebSocket ws("/ws");
+AsyncEventSource events("/events");
+
 /*
- *
- * Main Arduino setup() method.
- * 
- */
+
+   Main Arduino setup() method.
+
+*/
 void setup()
 {
+  SPIFFS.begin();
+  WiFi.softAP(ssid); //Enable the soft AP, no password specified to make life easier.
+
   Serial.begin(9600); //Serial port is currently set to 9600 Baud for the Serial Console.
   Serial.setTimeout(100000); //Timeout needs to be set higher than usual otherwise you can get timeouts waiting for keys etc.
-  
+
   delay(500); //Small delay to give the serial a chance to start.
 
   //Pre-populate array with valid functions.
   //TODO: Change this as its a waist of memory in its current form.
-  function_args["rnd"] = std::list<float>(); 
+  function_args["rnd"] = std::list<float>();
 
   //Setup WS2812's on pin GPIO 12 (assuming RAW pin layout)
   //TODO: Check with @elasticninja the exact details of the leds.
-  FastLED.addLeds<NEOPIXEL, 12>(leds, NUM_LEDS); 
+  FastLED.addLeds<NEOPIXEL, 12>(leds, NUM_LEDS);
 
+  //Setup WebServer
+  IPAddress myIP = WiFi.softAPIP();
+  print("AP IP address: ");
+  Serial.println(myIP);
+  WiFi.hostname(hostName);
+
+  // attach AsyncWebSocket
+  ws.onEvent(onEvent);
+  server.addHandler(&ws);
+
+  // attach AsyncEventSource
+  server.addHandler(&events);
+
+  // respond to GET requests on URL /heap
+  server.on("/heap", HTTP_GET, [](AsyncWebServerRequest * request) {
+    request->send(200, "text/plain", String(ESP.getFreeHeap()));
+  });
+
+  // upload a file to /upload
+  server.on("/upload", HTTP_POST, [](AsyncWebServerRequest * request) {
+    request->send(200);
+  }, onUpload);
+
+  // send a file when /index is requested
+  server.on("/index", HTTP_ANY, [](AsyncWebServerRequest * request) {
+    request->send(SPIFFS, "/index.htm");
+  });
+
+   // attach filesystem root at URL /fs
+  server.serveStatic("/fs", SPIFFS, "/");
+
+  // Catch-All Handlers
+  // Any request that can not find a Handler that canHandle it
+  // ends in the callbacks below.
+  server.onNotFound(onRequest);
+  server.onFileUpload(onUpload);
+  server.onRequestBody(onBody);
+
+  server.begin();
   //Display Startup Header on Serial interface.
   printStartupHeader();
 }
 
 /*
- *
- * Main Arduino loop() method.
- * 
- * Main application code is in this method.
- */
+
+   Main Arduino loop() method.
+
+   Main application code is in this method.
+*/
 void loop()
 {
   //Display the '>' prompt and wait for input
@@ -110,24 +167,24 @@ void loop()
   else if (match_nocase("new"))
   {
     program.clear();
-  } 
-  else if (match_nocase("help")) 
+  }
+  else if (match_nocase("help"))
   {
     print_help();
-  } 
-  else if (match_nocase("save")) 
+  }
+  else if (match_nocase("save"))
   {
     save_program();
-  } 
-  else if (match_nocase("load")) 
+  }
+  else if (match_nocase("load"))
   {
     load_program();
-  } 
-  else if (match_nocase("dir")) 
+  }
+  else if (match_nocase("dir"))
   {
     dir();
-  } 
-  else if (match_nocase("del")) 
+  }
+  else if (match_nocase("del"))
   {
     del();
   } else if (match_nocase("format")) {
@@ -140,6 +197,7 @@ void loop()
     //If the text entered isn't a Interpreter command assume its a line of BASIC code to be parsed.
     parse_line();
   }
+
 }
 
 void parse_statement()
@@ -163,9 +221,9 @@ void parse_statement()
   else if (stmt.equalsIgnoreCase("gosub"))
     parse_gosub();
   else if (stmt.equalsIgnoreCase("return"))
-    parse_return();    
+    parse_return();
   else if (stmt.equalsIgnoreCase("end"))
-    parse_end();    
+    parse_end();
   else if (stmt.equalsIgnoreCase("do"))
     parse_do();
   else if (stmt.equalsIgnoreCase("loop"))
@@ -177,13 +235,13 @@ void parse_statement()
   else if (stmt.equalsIgnoreCase("rem"))
     cursor = line.length();
   else if (stmt.equalsIgnoreCase("set"))
-    parse_set();    
+    parse_set();
   else if (stmt.equalsIgnoreCase("cls"))
     parse_cls();
   else if (stmt.equalsIgnoreCase("move"))
     parse_move();
   else if (stmt.equalsIgnoreCase("sleep"))
-    parse_sleep();  
+    parse_sleep();
   else if (stmt.equalsIgnoreCase("led"))
     parse_led();
   else
@@ -259,23 +317,23 @@ bool match_float_varname()
   return true;
 }
 
-bool match_string_varname() 
+bool match_string_varname()
 {
   skip_whitespace();
 
   if (cursor >= line.length() || line[cursor] != '$') //All string variables start with $
     return false;
-  
+
   int mark = cursor;
-  while(cursor < line.length() && (isalnum(line[cursor]) || line[cursor]=='$'))
+  while (cursor < line.length() && (isalnum(line[cursor]) || line[cursor] == '$'))
     cursor ++;
-  
+
   if (DEBUG_MODE) {
-    println("mark:"+String(mark));
-    println("cursor:"+String(cursor));
+    println("mark:" + String(mark));
+    println("cursor:" + String(cursor));
   }
 
-  token = line.substring(mark,cursor);  
+  token = line.substring(mark, cursor);
   return true;
 }
 
@@ -513,7 +571,7 @@ std::list<float> parse_args() {
     while (match(",")) {
       args.push_back(parse_expression());
     }
-    if (match(")")){
+    if (match(")")) {
       return args;
     } else {
       error_occurred("Syntax Error Missing ')'");
@@ -526,7 +584,7 @@ std::list<float> parse_args() {
 float parse_factor()
 {
   int signnum = 1;
-  if (match("-")) 
+  if (match("-"))
   {
     signnum = -1;
   }
@@ -543,12 +601,12 @@ float parse_factor()
       return call_fn(token, args) * signnum;
     }
     else if (variables_float.find(token) != variables_float.end()) {
-      return variables_float[token] * signnum;      
+      return variables_float[token] * signnum;
     } else {
       error_occurred("Var not found");
       //throw runtime_error("Var not found");
     }
-    
+
   }
   else if (match("("))
   {
@@ -619,19 +677,19 @@ bool parse_let()
     String var_name = String(token);
     var_name.toLowerCase();
 
-    if(DEBUG_MODE) {
-      println("var_name:"+var_name);
-      println("cursor:"+String(cursor));
+    if (DEBUG_MODE) {
+      println("var_name:" + var_name);
+      println("cursor:" + String(cursor));
     }
-  
+
     if (!match("="))
     {
       error_occurred("'=' expected");
       //throw runtime_error("'=' expected");
       return false;
     }
-  
-    if (!match_string()) 
+
+    if (!match_string())
     {
       error_occurred(" no string found");
       return false;
@@ -667,8 +725,8 @@ String parse_value()
   if (match_string())
     return token;
   else if (match_string_varname()) {
-    if (variables_string.find(token) != variables_string.end()) 
-      return variables_string[token]; 
+    if (variables_string.find(token) != variables_string.end())
+      return variables_string[token];
   }
   else
     return String(parse_expression());
@@ -692,7 +750,7 @@ void parse_println()
 }
 
 void parse_print() {
-    if (match_eol())
+  if (match_eol())
   {
     print("");
     //cout << endl; //TODO replace with generice print code
@@ -753,13 +811,13 @@ void parse_line()
     program[linenum] = line.substring(cursor);
 
     if (DEBUG_MODE) {
-      println("["+String(linenum)+"] "+line.substring(cursor));
+      println("[" + String(linenum) + "] " + line.substring(cursor));
     }
   }
   else
   {
     if (DEBUG_MODE) {
-      println(">>"+line+"<<");
+      println(">>" + line + "<<");
     }
     parse_block();
   }
@@ -791,12 +849,12 @@ void run_program()
 void parse_goto()
 {
   ESP.wdtFeed(); //feed the watchdog timer so that it won't reset the esp.
-  
+
   int line_num = parse_expression();
   if (program.find(line_num) != program.end())
   {
     current_line = program.find(line_num);
-    cursor= (current_line->second).length(); //Makes sure it ignores everything else on a line eg: 10 GOTO 20: Print "hi" (Print "hi" won't get run)
+    cursor = (current_line->second).length(); //Makes sure it ignores everything else on a line eg: 10 GOTO 20: Print "hi" (Print "hi" won't get run)
   }
   else
   {
@@ -814,7 +872,7 @@ void parse_gosub() {
   } else {
     error_occurred("Line not found");
   }
-} 
+}
 
 void parse_end() {
   current_line = program.end();
@@ -845,10 +903,10 @@ void parse_for() {
   if (DEBUG_MODE) {
     print("var_name:");
     println(var_name);
-    
+
     print("cursor:");
     println(String(cursor));
-    
+
     print("line:");
     println(line);
   }
@@ -869,10 +927,10 @@ void parse_for() {
   int step = 1;
   if (match_nocase("step")) {
     step = parse_expression();
-    if (step ==0) 
+    if (step == 0)
     {
       error_occurred("Infinite loop - FOR");
-      return;      
+      return;
     }
   }
 
@@ -892,7 +950,7 @@ void parse_next() {
   if (variables_float.find(token) == variables_float.end()) {
     error_occurred("Variable not found - NEXT");
     return;
-  } 
+  }
 
   int step = stack.top();
   stack.pop();
@@ -904,15 +962,15 @@ void parse_next() {
   variables_float[token] += step; //Add the step value to the variable.
   bool done = false;
 
-  if (step >0) {
+  if (step > 0) {
     done = variables_float[token] > limit;
-  } else if (step <0) {
+  } else if (step < 0) {
     done = variables_float[token] < limit;
   }
 
   if (!done) {
     current_line = program.find(next_line_no);
-    cursor=line.length();
+    cursor = line.length();
 
     stack.push(next_line_no);
     stack.push(limit);
@@ -940,18 +998,18 @@ void parse_loop() {
   }
 }
 
-void set_foreColour(int c) {  
+void set_foreColour(int c) {
   if ((c > 7) && (c < 16)) {
-    c=c -8;
+    c = c - 8;
     c = get_ansiColourCode(c); //Convert the colour to a ansi colour.
-    Serial.printf("\x1b[1;%dm",c); //Bright    
+    Serial.printf("\x1b[1;%dm", c); //Bright
   }  else if (c <= 7) {
     c = get_ansiColourCode(c); //Convert the colour to a ansi colour.
-    Serial.printf("\x1b[22;%dm",c); //Dim
-  }  
+    Serial.printf("\x1b[22;%dm", c); //Dim
+  }
 }
 
-//Returns a ANSI colour code 
+//Returns a ANSI colour code
 int get_ansiColourCode(int c) {
   /* BASIC Colours are as follows
       0 Black
@@ -965,27 +1023,27 @@ int get_ansiColourCode(int c) {
 
      ANSI colour code is the above + 30
   */
-  return c+30;
+  return c + 30;
 }
 
 void set_backColour(int c) {
   if ((c > 7) && (c < 16)) {
-    c=c -8;
-    c = get_ansiColourCode(c)+10; //Convert the colour to a ansi colour + 10 to shift it to a background colour.
-    Serial.printf("\x1b[1;%dm",c); //Bright    
+    c = c - 8;
+    c = get_ansiColourCode(c) + 10; //Convert the colour to a ansi colour + 10 to shift it to a background colour.
+    Serial.printf("\x1b[1;%dm", c); //Bright
   }  else if (c <= 7) {
-    c = get_ansiColourCode(c)+10; //Convert the colour to a ansi colour + 10 to shift it to a background colour.
-    Serial.printf("\x1b[22;%dm",c); //Dim
-  }  
+    c = get_ansiColourCode(c) + 10; //Convert the colour to a ansi colour + 10 to shift it to a background colour.
+    Serial.printf("\x1b[22;%dm", c); //Dim
+  }
 }
 
 void parse_set() {
   if (match_nocase("colour")) { //text fore colour
     int foreColour = parse_expression();
-    set_foreColour(foreColour);    
+    set_foreColour(foreColour);
   } else if (match_nocase("back")) { //text back color
     int backColour = parse_expression();
-    set_backColour(backColour);      
+    set_backColour(backColour);
   } else if (match_nocase("term")) { //terminal type
 
   }
@@ -999,7 +1057,7 @@ void parse_move() {
     return;
   }
   int y = parse_expression();
-  Serial.printf("\x1b[%d;%dH",y,x);
+  Serial.printf("\x1b[%d;%dH", y, x);
 }
 
 void parse_sleep() {
@@ -1012,7 +1070,7 @@ void parse_cls() {
 }
 
 void parse_led() {
-  bool on = false;  
+  bool on = false;
 
   int r = 0;
   int g = 0;
@@ -1024,7 +1082,7 @@ void parse_led() {
   } else if (match_nocase("off")) {
     on = false;
   }
-  
+
   if (!match(",")) {
     error_occurred("Missing ,");
     return;
@@ -1043,21 +1101,21 @@ void parse_led() {
       }
       skip_whitespace();
       r = parse_expression();
-      
+
       if (!match(",")) {
         error_occurred("Missing ,");
         return;
       }
       skip_whitespace();
       g = parse_expression();
-      
+
       if (!match(",")) {
         error_occurred("Missing ,");
         return;
       }
       skip_whitespace();
       b = parse_expression();
-      
+
       if (!match(")")) {
         error_occurred("Missing )");
         return;
@@ -1066,7 +1124,7 @@ void parse_led() {
   }
 
   if (on)
-    leds[ledNo].setRGB(r,g,b);
+    leds[ledNo].setRGB(r, g, b);
   else
     leds[ledNo] = CRGB::Black;
   FastLED.show();
@@ -1127,8 +1185,8 @@ int freeRam()
 }
 
 void printAsHex(String s) {
-  for (int i=0; i<s.length();i++) {
-    Serial.print((byte)s[i],HEX);
+  for (int i = 0; i < s.length(); i++) {
+    Serial.print((byte)s[i], HEX);
     Serial.print(" ");
   }
   Serial.println();
@@ -1167,34 +1225,31 @@ void print_help() {
   println("  SAVE - save program to flash");
   println("  DIR - list files in flash");
   println("  DEL - delete specified file from flash");
-  println("  DEBUG - enable debug mode (development)");  
+  println("  DEBUG - enable debug mode (development)");
   println("");
 }
 
 void load_program() {
   program.clear(); //Clear the current in memory program
-  SPIFFS.begin();
   String file = parse_value();
   if (SPIFFS.exists(file)) {
-    File loadFile = SPIFFS.open(file,"r");
+    File loadFile = SPIFFS.open(file, "r");
     while (loadFile.available()) {
-      cursor=0;
-      line = loadFile.readStringUntil('\n');      
+      cursor = 0;
+      line = loadFile.readStringUntil('\n');
       line.trim();
       parse_line();
     }
     println("LOADED");
     loadFile.close();
   } else {
-    println(file+" - FILE NOT FOUND");
+    println(file + " - FILE NOT FOUND");
   }
-  SPIFFS.end();
 }
 
 void save_program() {
-  if (SPIFFS.begin()) {
     String file = parse_value();
-    File saveFile = SPIFFS.open(file,"w");
+    File saveFile = SPIFFS.open(file, "w");
     for (auto const &item : program)
     {
       saveFile.print(String(item.first));
@@ -1203,30 +1258,24 @@ void save_program() {
     }
     println("SAVED");
     saveFile.close();
-    SPIFFS.end();
-  } else {println("SAVE FAILED");}
 }
 
 void dir() {
-  SPIFFS.begin();
   Dir dir = SPIFFS.openDir("");
-  while(dir.next()) {
+  while (dir.next()) {
     println(dir.fileName());
   }
-  SPIFFS.end();
 }
 
 void del() {
-  SPIFFS.begin();
   String file = parse_value();
   if (SPIFFS.exists(file)) {
     if (SPIFFS.remove(file)) {
-      println(file+" - DELETED");  
+      println(file + " - DELETED");
     }
   } else {
-    println(file+" - FILE NOT FOUND");
+    println(file + " - FILE NOT FOUND");
   }
-  SPIFFS.end();
 }
 
 void format() {
@@ -1239,10 +1288,27 @@ void format() {
 
 void flash_info() {
   println("Flash Chip Info:");
-  println(" ID:"+String(ESP.getFlashChipId()));
-  println(" Size:"+String(ESP.getFlashChipSize()));
-  println(" Real Size:"+String(ESP.getFlashChipRealSize()));
-  println(" Speed:"+String(ESP.getFlashChipSpeed()));
-  println(" Size by Chip ID:"+String(ESP.getFlashChipSizeByChipId()));
-  println(" Mode:"+String(ESP.getFlashChipMode()));
+  println(" ID:" + String(ESP.getFlashChipId()));
+  println(" Size:" + String(ESP.getFlashChipSize()));
+  println(" Real Size:" + String(ESP.getFlashChipRealSize()));
+  println(" Speed:" + String(ESP.getFlashChipSpeed()));
+  println(" Size by Chip ID:" + String(ESP.getFlashChipSizeByChipId()));
+  println(" Mode:" + String(ESP.getFlashChipMode()));
+}
+
+void onRequest(AsyncWebServerRequest *request) {
+  //Handle Unknown Request
+  request->send(404);
+}
+
+void onBody(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+  //Handle body
+}
+
+void onUpload(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final) {
+  //Handle upload
+}
+
+void onEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventType type, void * arg, uint8_t *data, size_t len) {
+  //Handle WebSocket event
 }

@@ -1,3 +1,10 @@
+//WebServer / Wifi related
+void onRequest(AsyncWebServerRequest *request);
+void onBody(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total);
+void onUpload(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final);
+void onEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventType type, void * arg, uint8_t *data, size_t len);
+
+//BASIC code parsing functions
 void skip_whitespace();
 
 bool match_nocase(String kw);
