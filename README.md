@@ -1,28 +1,51 @@
 # BsidesBASIC-2017
+-----
 BSides Cape Town 2017 - Flux Capacitor Badge Code
 By Dale Nunns (dale@stuff.za.net)
  
 This code implements a simple BASIC interpreter, currently it only supports floats.
 The serial console is implemented using ANSI/VT100 drawing functions for colour and cursor movement.
 
-Requires:
+###Requires:
+-----
+*ESP8266 Board Support for Arduino - 2.4.0-rc2 https://github.com/esp8266/Arduino/releases
+*ESPAsyncTCP - Required by ESPAsyncWebServer https://github.com/me-no-dev/ESPAsyncTCP
+*ESPAsyncWebServer https://github.com/me-no-dev/ESPAsyncWebServer
+*FastLED
+*ESP8266FS tool to upload SPIFFS filesystem https://github.com/esp8266/arduino-esp8266fs-plugin/releases/download/0.3.0/ESP8266FS-0.3.0.zip
 
--ESP8266 Board Support for Arduino - 2.4.0-rc2 https://github.com/esp8266/Arduino/releases
--ESPAsyncTCP - Required by ESPAsyncWebServer https://github.com/me-no-dev/ESPAsyncTCP
--ESPAsyncWebServer https://github.com/me-no-dev/ESPAsyncWebServer
--FastLED
+###Issues:
+-----
+*Error reporting in the interpreter is badly implemented due to not having Exceptions.
 
-Issues:
+###Badge 'plan'
+-----
+####HostAP 
+* Serial no of the badge as part of the SSID
+* Pressing Program Button displays SSID as 4bit hex values on badge LED's & via Serial
 
-  Currently error reporting in the interpreter is badly implemented due to not having Exceptions.
+####Web-interface:
+-----
+* Web-interface to prompt for button press + random unlock code displayed on LED's
+* Interactive SVG badge to set LED's + Program LED animation.
+* Set name/handle + password for badge
+* Upload/Download .BAS files ?
 
-To do:
-  RF - Interface to RF badge + rfcat functions.
-  INPUT command - some way to receive text input.
-  GETKEY command - some way to get keypresses.
-  CTRL+BREAK (C) - be able to BREAK a running app.
+####Serial:
+-----
+* BASIC interpreter access after killing AUTORUN.BAS
 
-BASIC COMMANDS
+####BASIC:
+-----
+* CTRL+C to break out of running .BAS file in BASIC
+* add INPUT and GETKEY commands to be able to handle keyboard input in BASIC
+* wrap WIFI client API
+* set password / disable HostAP via BASIC
+* add HTTP GET commands to BASIC 
+
+
+
+##BASIC COMMANDS
 ---
 **REM** - comment line
 
@@ -56,7 +79,7 @@ BASIC COMMANDS
 
 **LED ON/OFF** - turn an LED on/off 
 
-INTERPRETER COMMANDS
+##INTERPRETER COMMANDS
 ---
 **MEM** - show free memory
 
