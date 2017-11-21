@@ -43,6 +43,9 @@ The serial console is implemented using ANSI/VT100 drawing functions for colour 
 * set password / disable HostAP via BASIC
 * add HTTP GET commands to BASIC 
 
+####RF:
+-----
+*RF commands need to be in BASIC + in Web Interface
 
 
 ##BASIC COMMANDS
