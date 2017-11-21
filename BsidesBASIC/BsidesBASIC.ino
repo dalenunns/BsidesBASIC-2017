@@ -95,22 +95,22 @@ void setup()
   server.addHandler(&events);
 
   // respond to GET requests on URL /heap
-  server.on("/heap", HTTP_GET, [](AsyncWebServerRequest * request) {
-    request->send(200, "text/plain", String(ESP.getFreeHeap()));
-  });
+  //server.on("/heap", HTTP_GET, [](AsyncWebServerRequest * request) {
+  //  request->send(200, "text/plain", String(ESP.getFreeHeap()));
+  //});
 
   // upload a file to /upload
-  server.on("/upload", HTTP_POST, [](AsyncWebServerRequest * request) {
-    request->send(200);
-  }, onUpload);
+  //server.on("/upload", HTTP_POST, [](AsyncWebServerRequest * request) {
+  //  request->send(200);
+  //}, onUpload);
 
   // send a file when /index is requested
-  server.on("/index", HTTP_ANY, [](AsyncWebServerRequest * request) {
-    request->send(SPIFFS, "/index.htm");
-  });
+  //server.on("/index", HTTP_ANY, [](AsyncWebServerRequest * request) {
+  //  request->send(SPIFFS, "/index.htm");
+  //});
 
    // attach filesystem root at URL /fs
-  server.serveStatic("/fs", SPIFFS, "/");
+  server.serveStatic("/", SPIFFS, "/");
 
   // Catch-All Handlers
   // Any request that can not find a Handler that canHandle it
@@ -1072,9 +1072,9 @@ void parse_cls() {
 void parse_led() {
   bool on = false;
 
-  int r = 0;
-  int g = 0;
-  int b = 0;
+  byte r = 0;
+  byte g = 0;
+  byte b = 0;
 
   skip_whitespace();
   if (match_nocase("on")) {
@@ -1088,7 +1088,7 @@ void parse_led() {
     return;
   }
 
-  int ledNo = parse_expression();
+  byte ledNo = parse_expression();
 
   skip_whitespace();
   if (match(",")) {
@@ -1130,6 +1130,9 @@ void parse_led() {
   FastLED.show();
   //TODO:Investigate why this crashes
   //Removed as it causes a crash
+  //printFreeRAM();
+  //byte buf[4] = {ledNo,r,g,b};
+  //ws.binaryAll( (char*)buf);
   //ws.printfAll("led%d|%d,%d,%d",ledNo,r,g,b);
 }
 
@@ -1315,37 +1318,43 @@ void onUpload(AsyncWebServerRequest *request, String filename, size_t index, uin
 void onEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventType type, void * arg, uint8_t *data, size_t len) {
   if(type == WS_EVT_CONNECT){
     //client connected
-    Serial.printf("ws[%s][%u] connect\n", server->url(), client->id());
-    client->printf("Hello Client %u :)", client->id());
+    //Serial.printf("ws[%s][%u] connect\n", server->url(), client->id());
+    //client->printf("Hello Client %u :)", client->id());
     client->ping();
   } else if(type == WS_EVT_DISCONNECT){
     //client disconnected
-    Serial.printf("ws[%s][%u] disconnect: %u\n", server->url(), client->id());
+    //Serial.printf("ws[%s][%u] disconnect: %u\n", server->url(), client->id());
   } else if(type == WS_EVT_ERROR){
     //error was received from the other end
-    Serial.printf("ws[%s][%u] error(%u): %s\n", server->url(), client->id(), *((uint16_t*)arg), (char*)data);
+    //Serial.printf("ws[%s][%u] error(%u): %s\n", server->url(), client->id(), *((uint16_t*)arg), (char*)data);
   } else if(type == WS_EVT_PONG){
     //pong message was received (in response to a ping request maybe)
-    Serial.printf("ws[%s][%u] pong[%u]: %s\n", server->url(), client->id(), len, (len)?(char*)data:"");
+    //Serial.printf("ws[%s][%u] pong[%u]: %s\n", server->url(), client->id(), len, (len)?(char*)data:"");
   } else if(type == WS_EVT_DATA){
     //data packet
     AwsFrameInfo * info = (AwsFrameInfo*)arg;
     if(info->final && info->index == 0 && info->len == len){
       //the whole message is in a single frame and we got all of it's data
-      Serial.printf("ws[%s][%u] %s-message[%llu]: ", server->url(), client->id(), (info->opcode == WS_TEXT)?"text":"binary", info->len);
+      //Serial.printf("ws[%s][%u] %s-message[%llu]: ", server->url(), client->id(), (info->opcode == WS_TEXT)?"text":"binary", info->len);
       if(info->opcode == WS_TEXT){
         data[len] = 0;
-        Serial.printf("%s\n", (char*)data);
+        //Serial.printf("%s\n", (char*)data);
       } else {
-        for(size_t i=0; i < info->len; i++){
-          Serial.printf("%02x ", data[i]);
+        if (info->len == 4) {
+           leds[data[0]].setRGB(data[1], data[2], data[3]);
+           FastLED.show();
+           ws.binaryAll((char*)data);
         }
-        Serial.printf("\n");
+        
+        //for(size_t i=0; i < info->len; i++){
+        //  Serial.printf("%02x ", data[i]);
+        //}
+        //Serial.printf("\n");
       }
-      if(info->opcode == WS_TEXT)
-        client->text("I got your text message");
-      else
-        client->binary("I got your binary message");
+//      if(info->opcode == WS_TEXT)
+//        client->text("I got your text message");
+//      else
+//        client->binary("I got your binary message");
     } 
   }
 }
