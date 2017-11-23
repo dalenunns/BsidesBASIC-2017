@@ -64,9 +64,16 @@
 
                 var led = document.getElementById(ledId)
                 led.style.fill = colorHex
+
+                console.log('RX ArrayBuffer: '+buf2hex(bytearray))
             }
+
         }
         console.log('Received Msg: ' + message);
+    }
+
+    function buf2hex(buffer) {
+        return Array.prototype.map.call(new Uint8Array(buffer), x => ('00' + x.toString(16)).slice(-2)).join('');
     }
 
     function componentToHex(c) {
@@ -161,6 +168,7 @@
         socket.binaryType = "arraybuffer";
         socket.send(data)
 
+        console.log('TX ArrayBuffer: '+buf2hex(data))
     }
 
     function hex2rgb(hexStr) {

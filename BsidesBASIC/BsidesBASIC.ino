@@ -1343,13 +1343,13 @@ void onEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventTyp
         if (info->len == 4) {
            leds[data[0]].setRGB(data[1], data[2], data[3]);
            FastLED.show();
-           ws.binaryAll((char*)data);
+           ws.binaryAll(data,4);
         }
         
-        //for(size_t i=0; i < info->len; i++){
-        //  Serial.printf("%02x ", data[i]);
-        //}
-        //Serial.printf("\n");
+        for(size_t i=0; i < info->len; i++){
+          Serial.printf("%02x ", data[i]);
+        }
+        Serial.printf("\n");
       }
 //      if(info->opcode == WS_TEXT)
 //        client->text("I got your text message");
