@@ -11,6 +11,8 @@
 #include <ESPAsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 
+#define ENABLE_TELNET //Remove this def if you want serial instead of telnet 
+
 //FastLED library to control LED's
 #define FASTLED_ESP8266_RAW_PIN_ORDER //Sets the Pin Order to RAW mode see https://github.com/FastLED/FastLED/wiki/ESP8266-notes
 #include "FastLED.h"
@@ -33,8 +35,6 @@
 
 
 */
-
-#define MAX_SRV_CLIENTS 1 //MAX Telnet Clients (only tested with a max of 1)
 
 #define NUM_LEDS 15 //TODO: Change this to match flux-capacitor design
 CRGB leds[NUM_LEDS];
@@ -61,7 +61,7 @@ AsyncWebSocket ws("/ws");
 AsyncEventSource events("/events");
 
 WiFiServer telnetServer(23);
-WiFiClient telnetServerClients[MAX_SRV_CLIENTS];
+WiFiClient telnetServerClient;
 
 /*
 
@@ -88,7 +88,7 @@ void setup()
 
   //Setup WebServer
   IPAddress myIP = WiFi.softAPIP();
-  print("AP IP address: ");
+  Serial.print("AP IP address: ");
   Serial.println(myIP);
   WiFi.hostname(hostName);
 
@@ -114,7 +114,7 @@ void setup()
   //  request->send(SPIFFS, "/index.htm");
   //});
 
-   // attach filesystem root at URL /fs
+  // attach filesystem root at URL /fs
   server.serveStatic("/", SPIFFS, "/");
 
   // Catch-All Handlers
@@ -126,9 +126,11 @@ void setup()
 
   server.begin();
 
+#ifdef ENABLE_TELNET
   telnetServer.begin();
   telnetServer.setNoDelay(true);
-  
+#endif
+
   //Display Startup Header on Serial interface.
   printStartupHeader();
 }
@@ -141,9 +143,36 @@ void setup()
 */
 void loop()
 {
+
+#ifdef ENABLE_TELNET
+  //check if there are any new clients
+  if (telnetServer.hasClient()) {
+    //find free/disconnected spot
+    if (!telnetServerClient || !telnetServerClient.connected()) {
+      if (telnetServerClient) telnetServerClient.stop();
+      telnetServerClient = telnetServer.available();
+      Serial1.print("New client: ");
+
+      printStartupHeader();
+    }
+
+    //no free/disconnected spot so reject
+    WiFiClient serverClientRej = telnetServer.available();
+    serverClientRej.stop();
+  }
+#endif
+
   //Display the '>' prompt and wait for input
   print("> ");
-  line = gettermline();
+
+#ifdef ENABLE_TELNET  
+  if (telnetServerClient && telnetServerClient.connected()) {
+    line = gettermlineTelnet();
+  }
+#else
+    line = gettermline();
+#endif
+  
   println("");
 
   cursor = 0;
@@ -1011,10 +1040,22 @@ void set_foreColour(int c) {
   if ((c > 7) && (c < 16)) {
     c = c - 8;
     c = get_ansiColourCode(c); //Convert the colour to a ansi colour.
+#ifdef ENABLE_TELNET
+  if (telnetServerClient && telnetServerClient.connected()) {
+    telnetServerClient.printf("\x1b[1;%dm", c); //Bright
+  }
+#else    
     Serial.printf("\x1b[1;%dm", c); //Bright
+#endif
   }  else if (c <= 7) {
     c = get_ansiColourCode(c); //Convert the colour to a ansi colour.
+#ifdef ENABLE_TELNET
+  if (telnetServerClient && telnetServerClient.connected()) {
+    telnetServerClient.printf("\x1b[22;%dm", c); //Dim
+  }
+#else    
     Serial.printf("\x1b[22;%dm", c); //Dim
+#endif
   }
 }
 
@@ -1039,10 +1080,22 @@ void set_backColour(int c) {
   if ((c > 7) && (c < 16)) {
     c = c - 8;
     c = get_ansiColourCode(c) + 10; //Convert the colour to a ansi colour + 10 to shift it to a background colour.
+#ifdef ENABLE_TELNET
+  if (telnetServerClient && telnetServerClient.connected()) {
+    telnetServerClient.printf("\x1b[1;%dm", c); //Bright
+  }
+#else    
     Serial.printf("\x1b[1;%dm", c); //Bright
+#endif
   }  else if (c <= 7) {
     c = get_ansiColourCode(c) + 10; //Convert the colour to a ansi colour + 10 to shift it to a background colour.
+#ifdef ENABLE_TELNET
+  if (telnetServerClient && telnetServerClient.connected()) {
+    telnetServerClient.printf("\x1b[22;%dm", c); //Dim
+  }
+#else    
     Serial.printf("\x1b[22;%dm", c); //Dim
+#endif
   }
 }
 
@@ -1066,7 +1119,13 @@ void parse_move() {
     return;
   }
   int y = parse_expression();
+#ifdef ENABLE_TELNET
+  if (telnetServerClient && telnetServerClient.connected()) {
+    telnetServerClient.printf("\x1b[%d;%dH", y, x);
+  }
+#else    
   Serial.printf("\x1b[%d;%dH", y, x);
+#endif
 }
 
 void parse_sleep() {
@@ -1075,7 +1134,13 @@ void parse_sleep() {
 }
 
 void parse_cls() {
+#ifdef ENABLE_TELNET
+  if (telnetServerClient && telnetServerClient.connected()) {
+    telnetServerClient.printf("\x1b[2J \x1b[0;0H");
+  }
+#else    
   Serial.printf("\x1b[2J \x1b[0;0H");
+#endif
 }
 
 void parse_led() {
@@ -1147,21 +1212,68 @@ void parse_led() {
 
 void print(String s)
 {
+#ifdef ENABLE_TELNET
+  if (telnetServerClient && telnetServerClient.connected()) {
+    telnetServerClient.print(s);
+  }
+#else
   Serial.print(s);
+#endif
 }
 
 void print(int i)
 {
-  Serial.print(i);
+#ifdef ENABLE_TELNET  
+  if (telnetServerClient && telnetServerClient.connected()) {
+    telnetServerClient.print(i);
+  }
+#else
+  Serial.print(i)
+#endif
 }
 
 void println(String s)
 {
-  Serial.println(s);
+#ifdef ENABLE_TELNET  
+  if (telnetServerClient && telnetServerClient.connected()) {
+    telnetServerClient.println(s);
+  }
+#else
+    Serial.println(s);
+#endif
 }
 
-String gettermline()
+String gettermlineTelnet()
 {
+  String inputWord = "";
+  char inputChar;
+
+  if (telnetServerClient && telnetServerClient.connected()) {
+    do
+    {
+      if (telnetServerClient.available())
+      {
+        inputChar = telnetServerClient.read();
+        telnetServerClient.print(inputChar);
+        if ((inputChar == 127) || (inputChar == 8))
+        {
+          if (inputWord.length() > 0)
+          {
+            inputWord = inputWord.substring(0, inputWord.length() - 1);
+          }
+        }
+        else
+        {
+          inputWord += inputChar;
+        }
+      }
+    } while (inputChar != '\r');
+  }
+  inputWord.trim();
+  return inputWord;
+}
+
+String gettermline() {
   String inputWord = "";
   char inputChar;
 
@@ -1191,7 +1303,7 @@ String gettermline()
 
 void error_occurred(String msg)
 {
-  Serial.println(msg);
+  println(msg);
 }
 
 int freeRam()
@@ -1201,10 +1313,17 @@ int freeRam()
 
 void printAsHex(String s) {
   for (int i = 0; i < s.length(); i++) {
-    Serial.print((byte)s[i], HEX);
-    Serial.print(" ");
+#ifdef ENABLE_TELNET
+  if (telnetServerClient && telnetServerClient.connected()) {
+    telnetServerClient.print((byte)s[i], HEX);
   }
-  Serial.println();
+#else
+    Serial.print((byte)s[i], HEX);
+#endif    
+    print(" ");
+    
+  }
+  println("");
 }
 
 void printFreeRAM() {
@@ -1263,16 +1382,16 @@ void load_program() {
 }
 
 void save_program() {
-    String file = parse_value();
-    File saveFile = SPIFFS.open(file, "w");
-    for (auto const &item : program)
-    {
-      saveFile.print(String(item.first));
-      saveFile.print(" ");
-      saveFile.println(item.second);
-    }
-    println("SAVED");
-    saveFile.close();
+  String file = parse_value();
+  File saveFile = SPIFFS.open(file, "w");
+  for (auto const &item : program)
+  {
+    saveFile.print(String(item.first));
+    saveFile.print(" ");
+    saveFile.println(item.second);
+  }
+  println("SAVED");
+  saveFile.close();
 }
 
 void dir() {
@@ -1325,45 +1444,45 @@ void onUpload(AsyncWebServerRequest *request, String filename, size_t index, uin
 }
 
 void onEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventType type, void * arg, uint8_t *data, size_t len) {
-  if(type == WS_EVT_CONNECT){
+  if (type == WS_EVT_CONNECT) {
     //client connected
     //Serial.printf("ws[%s][%u] connect\n", server->url(), client->id());
     //client->printf("Hello Client %u :)", client->id());
     client->ping();
-  } else if(type == WS_EVT_DISCONNECT){
+  } else if (type == WS_EVT_DISCONNECT) {
     //client disconnected
     //Serial.printf("ws[%s][%u] disconnect: %u\n", server->url(), client->id());
-  } else if(type == WS_EVT_ERROR){
+  } else if (type == WS_EVT_ERROR) {
     //error was received from the other end
     //Serial.printf("ws[%s][%u] error(%u): %s\n", server->url(), client->id(), *((uint16_t*)arg), (char*)data);
-  } else if(type == WS_EVT_PONG){
+  } else if (type == WS_EVT_PONG) {
     //pong message was received (in response to a ping request maybe)
     //Serial.printf("ws[%s][%u] pong[%u]: %s\n", server->url(), client->id(), len, (len)?(char*)data:"");
-  } else if(type == WS_EVT_DATA){
+  } else if (type == WS_EVT_DATA) {
     //data packet
     AwsFrameInfo * info = (AwsFrameInfo*)arg;
-    if(info->final && info->index == 0 && info->len == len){
+    if (info->final && info->index == 0 && info->len == len) {
       //the whole message is in a single frame and we got all of it's data
       //Serial.printf("ws[%s][%u] %s-message[%llu]: ", server->url(), client->id(), (info->opcode == WS_TEXT)?"text":"binary", info->len);
-      if(info->opcode == WS_TEXT){
+      if (info->opcode == WS_TEXT) {
         data[len] = 0;
         //Serial.printf("%s\n", (char*)data);
       } else {
         if (info->len == 4) {
-           leds[data[0]].setRGB(data[1], data[2], data[3]);
-           FastLED.show();
-           ws.binaryAll(data,4);
+          leds[data[0]].setRGB(data[1], data[2], data[3]);
+          FastLED.show();
+          ws.binaryAll(data, 4);
         }
-        
-        for(size_t i=0; i < info->len; i++){
+
+        for (size_t i = 0; i < info->len; i++) {
           Serial.printf("%02x ", data[i]);
         }
         Serial.printf("\n");
       }
-//      if(info->opcode == WS_TEXT)
-//        client->text("I got your text message");
-//      else
-//        client->binary("I got your binary message");
-    } 
+      //      if(info->opcode == WS_TEXT)
+      //        client->text("I got your text message");
+      //      else
+      //        client->binary("I got your binary message");
+    }
   }
 }
