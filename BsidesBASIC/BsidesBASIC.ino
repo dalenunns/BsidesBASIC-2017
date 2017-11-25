@@ -34,6 +34,8 @@
 
 */
 
+#define MAX_SRV_CLIENTS 1 //MAX Telnet Clients (only tested with a max of 1)
+
 #define NUM_LEDS 15 //TODO: Change this to match flux-capacitor design
 CRGB leds[NUM_LEDS];
 
@@ -57,6 +59,9 @@ const char * hostName = "esp-async";
 AsyncWebServer server(80);
 AsyncWebSocket ws("/ws");
 AsyncEventSource events("/events");
+
+WiFiServer telnetServer(23);
+WiFiClient telnetServerClients[MAX_SRV_CLIENTS];
 
 /*
 
@@ -120,6 +125,10 @@ void setup()
   server.onRequestBody(onBody);
 
   server.begin();
+
+  telnetServer.begin();
+  telnetServer.setNoDelay(true);
+  
   //Display Startup Header on Serial interface.
   printStartupHeader();
 }
