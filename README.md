@@ -9,7 +9,8 @@ The serial console is implemented using ANSI/VT100 drawing functions for colour 
 * ESP8266 Board Support for Arduino - 2.4.0-rc2 https://github.com/esp8266/Arduino/releases
 * ESPAsyncTCP - Required by ESPAsyncWebServer https://github.com/me-no-dev/ESPAsyncTCP
 * ESPAsyncWebServer https://github.com/me-no-dev/ESPAsyncWebServer
-* FastLED
+* ESP8266RFCTelnet - RFC compliant telnet library https://github.com/blacktigersoftware/ESP8266RFCTelnet
+* FastLED - WS2812 LED control library (use library in Arduino)
 * ESP8266FS tool to upload SPIFFS filesystem https://github.com/esp8266/arduino-esp8266fs-plugin/releases/download/0.3.0/ESP8266FS-0.3.0.zip
 
 ### Issues:

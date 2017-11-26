@@ -11,14 +11,6 @@
 #include <ESPAsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 
-#define ENABLE_TELNET //Remove this def if you want serial instead of telnet 
-
-//FastLED library to control LED's
-#define FASTLED_ESP8266_RAW_PIN_ORDER //Sets the Pin Order to RAW mode see https://github.com/FastLED/FastLED/wiki/ESP8266-notes
-#include "FastLED.h"
-
-#include "BsidesBASIC.h"
-
 /*
    BSides Cape Town - BASIC for ESP8266
    By Dale Nunns (dale@stuff.za.net)
@@ -26,15 +18,18 @@
    This code implements a simple BASIC interpreter, currently it only supports floats.
    The serial console is implemented using ANSI/VT100 drawing functions for colour and cursor movement.
 
-   Requires:
-     Arduino for ESP8266
-     FastLED (using the one in the Arduino Libraries)
-
    Issues:
      Currently error reporting in the interpreter is badly implemented due to not having Exceptions.
-
-
 */
+
+
+#define ENABLE_TELNET //Remove this def if you want serial instead of telnet 
+
+//FastLED library to control LED's
+#define FASTLED_ESP8266_RAW_PIN_ORDER //Sets the Pin Order to RAW mode see https://github.com/FastLED/FastLED/wiki/ESP8266-notes
+#include "FastLED.h"
+
+#include "BsidesBASIC.h"
 
 #define NUM_LEDS 15 //TODO: Change this to match flux-capacitor design
 CRGB leds[NUM_LEDS];
@@ -58,7 +53,6 @@ const char * hostName = "esp-async";
 
 AsyncWebServer server(80);
 AsyncWebSocket ws("/ws");
-AsyncEventSource events("/events");
 
 WiFiServer telnetServer(23);
 WiFiClient telnetServerClient;
@@ -95,9 +89,6 @@ void setup()
   // attach AsyncWebSocket
   ws.onEvent(onEvent);
   server.addHandler(&ws);
-
-  // attach AsyncEventSource
-  server.addHandler(&events);
 
   // respond to GET requests on URL /heap
   //server.on("/heap", HTTP_GET, [](AsyncWebServerRequest * request) {
@@ -153,6 +144,32 @@ void loop()
       telnetServerClient = telnetServer.available();
       Serial1.print("New client: ");
 
+      if (telnetServerClient && telnetServerClient.connected()) {
+        while (telnetServerClient.available()) {          
+          char c = telnetServerClient.read();
+          if (c == 255) { Serial.println("");}
+          Serial.print(c,HEX);
+          Serial.print(" ");
+        }
+        Serial.println("");
+
+        telnetServerClient.write(255); // IAB
+        telnetServerClient.write(253); // DO
+        telnetServerClient.write(34);  // LINEMODE
+        
+        telnetServerClient.write(255); // IAB
+        telnetServerClient.write(250); // SB
+        telnetServerClient.write(34);  // LINEMODE
+        telnetServerClient.write(1);   // MODE: EDIT
+        telnetServerClient.write(3);   // DEFAULT MASK
+        
+        telnetServerClient.write(255); // IAB
+        telnetServerClient.write(240); // SE
+        
+        telnetServerClient.write(255); // IAB
+        telnetServerClient.write(251); // WILL
+        telnetServerClient.write(1);   // ECHO
+      }
       printStartupHeader();
     }
 
@@ -165,14 +182,14 @@ void loop()
   //Display the '>' prompt and wait for input
   print("> ");
 
-#ifdef ENABLE_TELNET  
+#ifdef ENABLE_TELNET
   if (telnetServerClient && telnetServerClient.connected()) {
     line = gettermlineTelnet();
   }
 #else
-    line = gettermline();
+  line = gettermline();
 #endif
-  
+
   println("");
 
   cursor = 0;
@@ -1041,19 +1058,19 @@ void set_foreColour(int c) {
     c = c - 8;
     c = get_ansiColourCode(c); //Convert the colour to a ansi colour.
 #ifdef ENABLE_TELNET
-  if (telnetServerClient && telnetServerClient.connected()) {
-    telnetServerClient.printf("\x1b[1;%dm", c); //Bright
-  }
-#else    
+    if (telnetServerClient && telnetServerClient.connected()) {
+      telnetServerClient.printf("\x1b[1;%dm", c); //Bright
+    }
+#else
     Serial.printf("\x1b[1;%dm", c); //Bright
 #endif
   }  else if (c <= 7) {
     c = get_ansiColourCode(c); //Convert the colour to a ansi colour.
 #ifdef ENABLE_TELNET
-  if (telnetServerClient && telnetServerClient.connected()) {
-    telnetServerClient.printf("\x1b[22;%dm", c); //Dim
-  }
-#else    
+    if (telnetServerClient && telnetServerClient.connected()) {
+      telnetServerClient.printf("\x1b[22;%dm", c); //Dim
+    }
+#else
     Serial.printf("\x1b[22;%dm", c); //Dim
 #endif
   }
@@ -1081,19 +1098,19 @@ void set_backColour(int c) {
     c = c - 8;
     c = get_ansiColourCode(c) + 10; //Convert the colour to a ansi colour + 10 to shift it to a background colour.
 #ifdef ENABLE_TELNET
-  if (telnetServerClient && telnetServerClient.connected()) {
-    telnetServerClient.printf("\x1b[1;%dm", c); //Bright
-  }
-#else    
+    if (telnetServerClient && telnetServerClient.connected()) {
+      telnetServerClient.printf("\x1b[1;%dm", c); //Bright
+    }
+#else
     Serial.printf("\x1b[1;%dm", c); //Bright
 #endif
   }  else if (c <= 7) {
     c = get_ansiColourCode(c) + 10; //Convert the colour to a ansi colour + 10 to shift it to a background colour.
 #ifdef ENABLE_TELNET
-  if (telnetServerClient && telnetServerClient.connected()) {
-    telnetServerClient.printf("\x1b[22;%dm", c); //Dim
-  }
-#else    
+    if (telnetServerClient && telnetServerClient.connected()) {
+      telnetServerClient.printf("\x1b[22;%dm", c); //Dim
+    }
+#else
     Serial.printf("\x1b[22;%dm", c); //Dim
 #endif
   }
@@ -1123,7 +1140,7 @@ void parse_move() {
   if (telnetServerClient && telnetServerClient.connected()) {
     telnetServerClient.printf("\x1b[%d;%dH", y, x);
   }
-#else    
+#else
   Serial.printf("\x1b[%d;%dH", y, x);
 #endif
 }
@@ -1138,7 +1155,7 @@ void parse_cls() {
   if (telnetServerClient && telnetServerClient.connected()) {
     telnetServerClient.printf("\x1b[2J \x1b[0;0H");
   }
-#else    
+#else
   Serial.printf("\x1b[2J \x1b[0;0H");
 #endif
 }
@@ -1223,7 +1240,7 @@ void print(String s)
 
 void print(int i)
 {
-#ifdef ENABLE_TELNET  
+#ifdef ENABLE_TELNET
   if (telnetServerClient && telnetServerClient.connected()) {
     telnetServerClient.print(i);
   }
@@ -1234,12 +1251,12 @@ void print(int i)
 
 void println(String s)
 {
-#ifdef ENABLE_TELNET  
+#ifdef ENABLE_TELNET
   if (telnetServerClient && telnetServerClient.connected()) {
     telnetServerClient.println(s);
   }
 #else
-    Serial.println(s);
+  Serial.println(s);
 #endif
 }
 
@@ -1314,14 +1331,14 @@ int freeRam()
 void printAsHex(String s) {
   for (int i = 0; i < s.length(); i++) {
 #ifdef ENABLE_TELNET
-  if (telnetServerClient && telnetServerClient.connected()) {
-    telnetServerClient.print((byte)s[i], HEX);
-  }
+    if (telnetServerClient && telnetServerClient.connected()) {
+      telnetServerClient.print((byte)s[i], HEX);
+    }
 #else
     Serial.print((byte)s[i], HEX);
-#endif    
+#endif
     print(" ");
-    
+
   }
   println("");
 }
