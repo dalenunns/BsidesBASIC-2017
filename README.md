@@ -3,15 +3,18 @@ BSides Cape Town 2017 - Flux Capacitor Badge Code
 By Dale Nunns (dale@stuff.za.net)
  
 This code implements a simple BASIC interpreter, async webserver, led blinking and hostAP.
-The serial console is implemented using ANSI/VT100 drawing functions for colour and cursor movement.
+The 'telnet' console (on port 88) is implemented using ANSI/VT100 drawing functions for colour and cursor movement.
 
-### Requires:
+### Required libraries:
 * ESP8266 Board Support for Arduino - 2.4.0-rc2 https://github.com/esp8266/Arduino/releases
 * ESPAsyncTCP - Required by ESPAsyncWebServer https://github.com/me-no-dev/ESPAsyncTCP
 * ESPAsyncWebServer https://github.com/me-no-dev/ESPAsyncWebServer
 * ESP8266RFCTelnet - RFC compliant telnet library https://github.com/blacktigersoftware/ESP8266RFCTelnet
 * FastLED - WS2812 LED control library (use library in Arduino)
+
+#### Tools
 * ESP8266FS tool to upload SPIFFS filesystem https://github.com/esp8266/arduino-esp8266fs-plugin/releases/download/0.3.0/ESP8266FS-0.3.0.zip
+* EspExceptionDecoder - converts exceptions to something that makes sense https://github.com/me-no-dev/EspExceptionDecoder
 
 ### Issues:
 * Error reporting in the interpreter is badly implemented due to not having Exceptions.

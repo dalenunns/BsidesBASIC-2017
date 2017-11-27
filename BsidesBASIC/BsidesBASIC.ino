@@ -24,6 +24,7 @@
 
 
 #define ENABLE_TELNET //Remove this def if you want serial instead of telnet 
+#define TELNET_PORT 88 //Set to port 88 to avoid having to negotiate the telnet RFC
 
 //FastLED library to control LED's
 #define FASTLED_ESP8266_RAW_PIN_ORDER //Sets the Pin Order to RAW mode see https://github.com/FastLED/FastLED/wiki/ESP8266-notes
@@ -33,6 +34,8 @@
 
 #define NUM_LEDS 15 //TODO: Change this to match flux-capacitor design
 CRGB leds[NUM_LEDS];
+
+const byte programButtonPin = 0; //Program Button on GPIO0
 
 String line = "";
 int cursor = 0;
@@ -48,13 +51,13 @@ std::map<String, std::list<float>> function_args;
 bool DEBUG_MODE = false;
 
 //Wifi / WebServer Code
-const char *ssid = "ESPap";
-const char * hostName = "esp-async";
+const char *hostName = "badge2017";
 
 AsyncWebServer server(80);
 AsyncWebSocket ws("/ws");
 
-WiFiServer telnetServer(23);
+//Setup Telnet
+WiFiServer telnetServer(TELNET_PORT);
 WiFiClient telnetServerClient;
 
 /*
@@ -64,21 +67,25 @@ WiFiClient telnetServerClient;
 */
 void setup()
 {
-  SPIFFS.begin();
-  WiFi.softAP(ssid); //Enable the soft AP, no password specified to make life easier.
-
-  Serial.begin(9600); //Serial port is currently set to 9600 Baud for the Serial Console.
-  Serial.setTimeout(100000); //Timeout needs to be set higher than usual otherwise you can get timeouts waiting for keys etc.
-
-  delay(500); //Small delay to give the serial a chance to start.
-
   //Pre-populate array with valid functions.
   //TODO: Change this as its a waist of memory in its current form.
   function_args["rnd"] = std::list<float>();
 
   //Setup WS2812's on pin GPIO 12 (assuming RAW pin layout)
-  //TODO: Check with @elasticninja the exact details of the leds.
   FastLED.addLeds<NEOPIXEL, 12>(leds, NUM_LEDS);
+
+  Serial.begin(9600); //Serial port is currently set to 9600 Baud for the Serial Console.
+  Serial.setTimeout(100000); //Timeout needs to be set higher than usual otherwise you can get timeouts waiting for keys etc.
+
+  SPIFFS.begin();
+
+  //Build unique badge AP ID
+  String ssid = "BADGE_" + getMacAddress();
+  WiFi.softAP(ssid.c_str()); //Enable the soft AP, no password specified to make life easier for now.
+
+  Serial.println("BSides Capetown 2017");
+  Serial.println("-------------------------------------------");
+  Serial.println("SoftAP - SSID:" + ssid);
 
   //Setup WebServer
   IPAddress myIP = WiFi.softAPIP();
@@ -122,6 +129,8 @@ void setup()
   telnetServer.setNoDelay(true);
 #endif
 
+  pinMode(programButtonPin, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(programButtonPin), displayPassword, CHANGE);
   //Display Startup Header on Serial interface.
   printStartupHeader();
 }
@@ -139,43 +148,14 @@ void loop()
   //check if there are any new clients
   if (telnetServer.hasClient()) {
     //find free/disconnected spot
-    if (!telnetServerClient || !telnetServerClient.connected()) {
-      if (telnetServerClient) telnetServerClient.stop();
+    if (!telnetServerClient.connected()) {
+      telnetServerClient.stop();
       telnetServerClient = telnetServer.available();
-      Serial1.print("New client: ");
-
-      if (telnetServerClient && telnetServerClient.connected()) {
-        while (telnetServerClient.available()) {          
-          char c = telnetServerClient.read();
-          if (c == 255) { Serial.println("");}
-          Serial.print(c,HEX);
-          Serial.print(" ");
-        }
-        Serial.println("");
-
-        telnetServerClient.write(255); // IAB
-        telnetServerClient.write(253); // DO
-        telnetServerClient.write(34);  // LINEMODE
-        
-        telnetServerClient.write(255); // IAB
-        telnetServerClient.write(250); // SB
-        telnetServerClient.write(34);  // LINEMODE
-        telnetServerClient.write(1);   // MODE: EDIT
-        telnetServerClient.write(3);   // DEFAULT MASK
-        
-        telnetServerClient.write(255); // IAB
-        telnetServerClient.write(240); // SE
-        
-        telnetServerClient.write(255); // IAB
-        telnetServerClient.write(251); // WILL
-        telnetServerClient.write(1);   // ECHO
-      }
-      printStartupHeader();
+    } else {
+      telnetServer.available().stop();
     }
 
-    //no free/disconnected spot so reject
-    WiFiClient serverClientRej = telnetServer.available();
-    serverClientRej.stop();
+    printStartupHeader();
   }
 #endif
 
@@ -1147,7 +1127,9 @@ void parse_move() {
 
 void parse_sleep() {
   int s = parse_expression();
-  delay(s);
+  for (int d = 0; d <= s; s++) {
+    delay(s);
+  }
 }
 
 void parse_cls() {
@@ -1219,6 +1201,7 @@ void parse_led() {
   else
     leds[ledNo] = CRGB::Black;
   FastLED.show();
+
   //TODO:Investigate why this crashes
   //Removed as it causes a crash
   //printFreeRAM();
@@ -1503,3 +1486,27 @@ void onEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventTyp
     }
   }
 }
+
+String getMacAddress() {
+  byte mac[6];
+
+  WiFi.macAddress(mac);
+  String cMac = "";
+  for (int i = 0; i < 6; ++i) {
+    if (mac[i] < 0x10) {
+      cMac += "0";
+    }
+    cMac += String(mac[i], HEX);
+    if (i < 5)
+      cMac += ""; // put : or - if you want byte delimiters
+  }
+  cMac.toUpperCase();
+  return cMac;
+}
+
+//ISR that gets run when the program button is pressed.
+void displayPassword() {
+  //TODO: add code here to display password on LED's
+}
+
+

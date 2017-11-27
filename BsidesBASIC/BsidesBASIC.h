@@ -76,6 +76,7 @@ void error_occurred(String msg);
 std::list<float> parse_args();
 
 int freeRam();
+String getMacAddress();
 void printStartupHeader();
 
 float call_fn(String name, std::list<float> args);
