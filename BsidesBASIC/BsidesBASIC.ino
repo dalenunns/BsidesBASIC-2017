@@ -1127,8 +1127,8 @@ void parse_move() {
 
 void parse_sleep() {
   int s = parse_expression();
-  for (int d = 0; d <= s; s++) {
-    delay(s);
+  for (int d = 0; d < s; d++) {
+    delay(1);
   }
 }
 
