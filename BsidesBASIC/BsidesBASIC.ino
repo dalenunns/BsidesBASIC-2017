@@ -1466,12 +1466,20 @@ void onEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventTyp
       //Serial.printf("ws[%s][%u] %s-message[%llu]: ", server->url(), client->id(), (info->opcode == WS_TEXT)?"text":"binary", info->len);
       if (info->opcode == WS_TEXT) {
         data[len] = 0;
-        //Serial.printf("%s\n", (char*)data);
+        Serial.printf("%s\n", (char*)data);
       } else {
         if (info->len == 4) {
-          leds[data[0]].setRGB(data[1], data[2], data[3]);
-          FastLED.show();
-          ws.binaryAll(data, 4);
+          if (data[0] < NUM_LEDS) {
+            leds[data[0]].setRGB(data[1], data[2], data[3]);
+            FastLED.show();
+            ws.binaryAll(data, 4);
+          } else if (data[0] == 255) {
+            for (int i =0; i < NUM_LEDS; i++) {
+              leds[data[i]].setRGB(data[1], data[2], data[3]);  
+            }
+            FastLED.show();
+            ws.binaryAll(data, 4);
+          }
         }
 
         for (size_t i = 0; i < info->len; i++) {

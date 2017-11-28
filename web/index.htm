@@ -70,7 +70,16 @@
         <td>Colour picker:</td>
         <td><input id="colorPicker" type="color" style="min-height: 30px;min-width: 60px" value="#FFFF00" /></td>
     </tr>
+    <tr>
+        <td>Fill:</td>
+        <td><input id="btnSetAll" type="button" value="Fill" onclick="setAllClick()"/> </td>
+    </tr>
 </table>
+
+<div id="Hidden">
+    <input type ="text" id="txtBASICCommand"/><br/>
+    <input type="button" value="Send" id="btnSend" onclick="sendBASICCommand()" />
+</div>
 
 
 <script>
@@ -89,11 +98,20 @@
         if (event.data instanceof ArrayBuffer) {
             var bytearray = new Uint8Array(event.data);
             if (bytearray.length == 4) {
-                var ledId = getLedId(bytearray[0])
-                var colorHex = rgbToHex(bytearray[1], bytearray[2], bytearray[3])
+                if (bytearray[0] < 15) {
+                    var ledId = getLedId(bytearray[0])
+                    var colorHex = rgbToHex(bytearray[1], bytearray[2], bytearray[3])
 
-                var led = document.getElementById(ledId)
-                led.style.fill = colorHex
+                    var led = document.getElementById(ledId)
+                    led.style.fill = colorHex
+                } else if (bytearray[0] == 255) {
+                    var colorHex = rgbToHex(bytearray[1], bytearray[2], bytearray[3])
+                    for (i=0; i <15;i++) {
+                        var ledId = getLedId(i)
+                        var led = document.getElementById(ledId)
+                        led.style.fill = colorHex
+                    }
+                }
 
                 console.log('RX ArrayBuffer: '+buf2hex(bytearray))
             }
@@ -204,6 +222,31 @@
         socket.send(data)
 
         console.log('TX ArrayBuffer: '+buf2hex(data))
+    }
+
+    function setAllClick() {
+        var colorPicker = document.getElementById("colorPicker")
+        rgbVal = hex2rgb(colorPicker.value)
+        var data = new Uint8Array(4)
+        data[0] = 0xFF
+        data[1] = rgbVal[0]
+        data[2] = rgbVal[1]
+        data[3] = rgbVal[2]
+        socket.binaryType = "arraybuffer";
+        socket.send(data)
+
+        console.log('TX ArrayBuffer: '+buf2hex(data))
+    }
+
+    function sendBASICCommand() {
+        line = document.getElementById("txtBASICCommand").value
+        sendBASICLine(line)
+    }
+
+    function sendBASICLine(line) {
+        line = "BS:"+line
+        socket.send(line)
+        console.log('TX String: '+line)
     }
 
     function hex2rgb(hexStr) {
