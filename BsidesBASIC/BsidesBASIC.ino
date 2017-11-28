@@ -28,12 +28,20 @@
 
 //FastLED library to control LED's
 #define FASTLED_ESP8266_RAW_PIN_ORDER //Sets the Pin Order to RAW mode see https://github.com/FastLED/FastLED/wiki/ESP8266-notes
+
+#define FASTLED_INTERRUPT_RETRY_COUNT 0
+#define FASTLED_ALLOW_INTERRUPTS 0
+
 #include "FastLED.h"
 
 #include "BsidesBASIC.h"
 
 #define NUM_LEDS 15 //TODO: Change this to match flux-capacitor design
 CRGB leds[NUM_LEDS];
+
+volatile bool leds_changed = false; //used to indicate to the main loop the leds have been updated
+volatile bool leds_fill = false;
+volatile byte led_fill_color[3] = {0, 0, 0};
 
 const byte programButtonPin = 0; //Program Button on GPIO0
 
@@ -67,6 +75,8 @@ WiFiClient telnetServerClient;
 */
 void setup()
 {
+  WiFi.setSleepMode(WIFI_NONE_SLEEP); //prevent the wifi from sleeping, may fix some connection issues.
+
   //Pre-populate array with valid functions.
   //TODO: Change this as its a waist of memory in its current form.
   function_args["rnd"] = std::list<float>();
@@ -129,10 +139,12 @@ void setup()
   telnetServer.setNoDelay(true);
 #endif
 
-  pinMode(programButtonPin, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(programButtonPin), displayPassword, CHANGE);
+  //pinMode(programButtonPin, INPUT_PULLUP);
+  //attachInterrupt(digitalPinToInterrupt(programButtonPin), displayPassword, CHANGE);
   //Display Startup Header on Serial interface.
   printStartupHeader();
+
+  FastLED.clear();
 }
 
 /*
@@ -141,6 +153,11 @@ void setup()
 
    Main application code is in this method.
 */
+String inputWord = "";
+char inputChar;
+
+bool isRunning = false;
+
 void loop()
 {
 
@@ -156,22 +173,72 @@ void loop()
     }
 
     printStartupHeader();
+    //Display the '>' prompt and wait for input
+    print("> ");
+    inputWord = ""; //reset everything
   }
 #endif
 
-  //Display the '>' prompt and wait for input
-  print("> ");
+  if (isRunning) {
+    if (current_line != program.end()) {
+      line = current_line->second;
+      cursor = 0;
+      ++current_line;
+      parse_block();
+    } else {
+      isRunning = false;
+    }
+  }
 
-#ifdef ENABLE_TELNET
   if (telnetServerClient && telnetServerClient.connected()) {
-    line = gettermlineTelnet();
+    if (telnetServerClient.available())
+    {
+      inputChar = telnetServerClient.read();
+      telnetServerClient.print(inputChar);
+      if ((inputChar == 127) || (inputChar == 8))
+      {
+        if (inputWord.length() > 0)
+        {
+          inputWord = inputWord.substring(0, inputWord.length() - 1);
+        }
+      }
+      else
+      {
+        inputWord += inputChar;
+      }
+
+      if (inputChar == '\r') {
+        inputWord.trim();
+        line = inputWord;
+        println("");
+        parse_command_line();
+        println("");
+        Serial.println("[" + line + "]");
+        printAsHex(line);
+        //Display the '>' prompt and wait for input
+        print("> ");
+
+        inputWord = ""; //reset everything
+      }
+    }
   }
-#else
-  line = gettermline();
-#endif
 
-  println("");
+  ESP.wdtFeed(); //feed the watchdog timer so that it won't reset the esp.
+  
+  //Update leds if neccessary
+  if (leds_changed) {
+    if (leds_fill) {
+      fill_solid(leds, NUM_LEDS, CRGB(led_fill_color[0], led_fill_color[1], led_fill_color[2]));
+    }
+    leds_changed = false;
+    leds_fill = false;
+    FastLED.show(); //update LED's
+  }  
+}
 
+
+//Nothin in here should block
+void parse_command_line() {
   cursor = 0;
 
   if (match_nocase("debug")) {
@@ -232,7 +299,6 @@ void loop()
     //If the text entered isn't a Interpreter command assume its a line of BASIC code to be parsed.
     parse_line();
   }
-
 }
 
 void parse_statement()
@@ -873,13 +939,7 @@ void list_program()
 void run_program()
 {
   current_line = program.begin();
-  while (current_line != program.end())
-  {
-    line = current_line->second;
-    cursor = 0;
-    ++current_line;
-    parse_block();
-  }
+  isRunning = true;
 }
 
 void parse_goto()
@@ -1204,7 +1264,9 @@ void parse_led() {
     leds[ledNo].setRGB(r, g, b);
   else
     leds[ledNo] = CRGB::Black;
-  FastLED.show();
+
+  leds_changed = true;
+
 
   //TODO:Investigate why this crashes
   //Removed as it causes a crash
@@ -1317,16 +1379,8 @@ int freeRam()
 
 void printAsHex(String s) {
   for (int i = 0; i < s.length(); i++) {
-    ESP.wdtFeed(); //feed the watchdog timer so that it won't reset the esp.
-#ifdef ENABLE_TELNET
-    if (telnetServerClient && telnetServerClient.connected()) {
-      telnetServerClient.print((byte)s[i], HEX);
-    }
-#else
     Serial.print((byte)s[i], HEX);
-#endif
     print(" ");
-
   }
   println("");
 }
@@ -1450,7 +1504,6 @@ void onUpload(AsyncWebServerRequest *request, String filename, size_t index, uin
 }
 
 void onEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventType type, void * arg, uint8_t *data, size_t len) {
-  ESP.wdtFeed(); //feed the watchdog timer so that it won't reset the esp.
   if (type == WS_EVT_CONNECT) {
     //client connected
     //Serial.printf("ws[%s][%u] connect\n", server->url(), client->id());
@@ -1478,23 +1531,22 @@ void onEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventTyp
         if (info->len == 4) {
           if (data[0] < NUM_LEDS) {
             leds[data[0]].setRGB(data[1], data[2], data[3]);
-            ESP.wdtFeed(); //feed the watchdog timer so that it won't reset the esp.
-            FastLED.show();
+
+            leds_changed = true;
             ws.binaryAll(data, 4);
+
           } else if (data[0] == 255) {
-            for (int i =0; i < NUM_LEDS; i++) {
-              leds[data[i]].setRGB(data[1], data[2], data[3]);  
-            }
-            ESP.wdtFeed(); //feed the watchdog timer so that it won't reset the esp.
-            FastLED.show();
+            led_fill_color[0] = data[1];
+            led_fill_color[1] = data[2];
+            led_fill_color[2] = data[3];
+
+            leds_fill = true;
+            leds_changed = true;
+
             ws.binaryAll(data, 4);
           }
         }
 
-        for (size_t i = 0; i < info->len; i++) {
-          Serial.printf("%02x ", data[i]);
-        }
-        Serial.printf("\n");
       }
       //      if(info->opcode == WS_TEXT)
       //        client->text("I got your text message");
