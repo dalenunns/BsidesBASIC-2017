@@ -22,15 +22,13 @@
      Currently error reporting in the interpreter is badly implemented due to not having Exceptions.
 */
 
-
-#define ENABLE_TELNET //Remove this def if you want serial instead of telnet 
 #define TELNET_PORT 88 //Set to port 88 to avoid having to negotiate the telnet RFC
 
 //FastLED library to control LED's
-#define FASTLED_ESP8266_RAW_PIN_ORDER //Sets the Pin Order to RAW mode see https://github.com/FastLED/FastLED/wiki/ESP8266-notes
+//#define FASTLED_ESP8266_RAW_PIN_ORDER //Sets the Pin Order to RAW mode see https://github.com/FastLED/FastLED/wiki/ESP8266-notes
 
-#define FASTLED_INTERRUPT_RETRY_COUNT 0
-#define FASTLED_ALLOW_INTERRUPTS 0
+//#define FASTLED_INTERRUPT_RETRY_COUNT 0
+//#define FASTLED_ALLOW_INTERRUPTS 0
 
 #include "FastLED.h"
 
@@ -42,8 +40,6 @@ CRGB leds[NUM_LEDS];
 volatile bool leds_changed = false; //used to indicate to the main loop the leds have been updated
 volatile bool leds_fill = false;
 volatile byte led_fill_color[3] = {0, 0, 0};
-
-const byte programButtonPin = 0; //Program Button on GPIO0
 
 String line = "";
 int cursor = 0;
@@ -68,6 +64,10 @@ AsyncWebSocket ws("/ws");
 WiFiServer telnetServer(TELNET_PORT);
 WiFiClient telnetServerClient;
 
+#define BLINKY_MODE 0
+#define WIFI_MODE 1
+
+byte BADGE_MODE = BLINKY_MODE;
 /*
 
    Main Arduino setup() method.
@@ -75,77 +75,78 @@ WiFiClient telnetServerClient;
 */
 void setup()
 {
-  WiFi.setSleepMode(WIFI_NONE_SLEEP); //prevent the wifi from sleeping, may fix some connection issues.
+  //Serial is always available.
+  Serial.begin(9600); //Serial port is currently set to 9600 Baud for the Serial Console.
+  Serial.setTimeout(100000); //Timeout needs to be set higher than usual otherwise you can get timeouts waiting for keys etc.
+
+  //Setup the SPIFFS file system
+  SPIFFS.begin();
 
   //Pre-populate array with valid functions.
   //TODO: Change this as its a waist of memory in its current form.
   function_args["rnd"] = std::list<float>();
 
+  //Default is blinky mode (serial interface & LED's only)
+  SetupBlinkyMode();
+}
+
+//The badge has been split into 2 modes as it can't run both the LED's and the Wifi without one of the two dieing.
+void SetupBlinkyMode() {
+  BADGE_MODE = BLINKY_MODE;
+  WiFi.mode(WIFI_OFF);
   //Setup WS2812's on pin GPIO 12 (assuming RAW pin layout)
   FastLED.addLeds<NEOPIXEL, 12>(leds, NUM_LEDS);
-
-  Serial.begin(9600); //Serial port is currently set to 9600 Baud for the Serial Console.
-  Serial.setTimeout(100000); //Timeout needs to be set higher than usual otherwise you can get timeouts waiting for keys etc.
-
-  SPIFFS.begin();
-
-  //Build unique badge AP ID
-  String ssid = "BADGE_" + getMacAddress();
-  WiFi.softAP(ssid.c_str()); //Enable the soft AP, no password specified to make life easier for now.
-
-  Serial.println("BSides Capetown 2017");
-  Serial.println("-------------------------------------------");
-  Serial.println("SoftAP - SSID:" + ssid);
-
-  //Setup WebServer
-  IPAddress myIP = WiFi.softAPIP();
-  Serial.print("AP IP address: ");
-  Serial.println(myIP);
-  WiFi.hostname(hostName);
-
-  // attach AsyncWebSocket
-  ws.onEvent(onEvent);
-  server.addHandler(&ws);
-
-  // respond to GET requests on URL /heap
-  //server.on("/heap", HTTP_GET, [](AsyncWebServerRequest * request) {
-  //  request->send(200, "text/plain", String(ESP.getFreeHeap()));
-  //});
-
-  // upload a file to /upload
-  //server.on("/upload", HTTP_POST, [](AsyncWebServerRequest * request) {
-  //  request->send(200);
-  //}, onUpload);
-
-  // send a file when /index is requested
-  //server.on("/index", HTTP_ANY, [](AsyncWebServerRequest * request) {
-  //  request->send(SPIFFS, "/index.htm");
-  //});
-
-  // attach filesystem root at URL /fs
-  server.serveStatic("/", SPIFFS, "/");
-
-  // Catch-All Handlers
-  // Any request that can not find a Handler that canHandle it
-  // ends in the callbacks below.
-  server.onNotFound(onRequest);
-  server.onFileUpload(onUpload);
-  server.onRequestBody(onBody);
-
-  server.begin();
-
-#ifdef ENABLE_TELNET
-  telnetServer.begin();
-  telnetServer.setNoDelay(true);
-#endif
-
-  //pinMode(programButtonPin, INPUT_PULLUP);
-  //attachInterrupt(digitalPinToInterrupt(programButtonPin), displayPassword, CHANGE);
-  //Display Startup Header on Serial interface.
-  printStartupHeader();
-
+  FastLED.setBrightness(32);
   FastLED.clear();
+  FastLED.show();
+
+  RainbowRingAnimation();
 }
+
+bool runOnce = false;
+
+void SetupWifiConfigMode() {
+  BADGE_MODE = WIFI_MODE;
+  if (!runOnce) {
+    runOnce = true;
+    StartBurstAnimation();
+    String ssid = "BADGE_" + getMacAddress();
+
+    WiFi.softAP(ssid.c_str()); //Enable the soft AP, no password specified to make life easier for now.
+    delay(100);
+
+    //Setup WebServer
+    IPAddress myIP = WiFi.softAPIP();
+    WiFi.hostname(hostName);
+
+    // attach AsyncWebSocket
+    ws.onEvent(onEvent);
+    server.addHandler(&ws);
+
+    server.serveStatic("/", SPIFFS, "/");
+
+    // Catch-All Handlers
+    // Any request that can not find a Handler that canHandle it
+    // ends in the callbacks below.
+    server.onNotFound(onRequest);
+    server.onFileUpload(onUpload);
+    server.onRequestBody(onBody);
+
+    server.begin();
+
+    telnetServer.begin();
+    telnetServer.setNoDelay(true);
+
+    Serial.println("Badge IoT configuration mode enabled");
+    Serial.println("----------------------------------------------");
+    Serial.print("SSID:");
+    Serial.println(ssid);
+    Serial.print("IP:");
+    Serial.println(myIP);
+    Serial.println("----------------------------------------------");
+  }
+}
+
 
 /*
 
@@ -160,24 +161,89 @@ bool isRunning = false;
 
 void loop()
 {
-
-#ifdef ENABLE_TELNET
-  //check if there are any new clients
-  if (telnetServer.hasClient()) {
-    //find free/disconnected spot
-    if (!telnetServerClient.connected()) {
-      telnetServerClient.stop();
-      telnetServerClient = telnetServer.available();
-    } else {
-      telnetServer.available().stop();
+  if (digitalRead(0) == 0) {
+    SetupWifiConfigMode();
     }
 
-    printStartupHeader();
-    //Display the '>' prompt and wait for input
-    print("> ");
-    inputWord = ""; //reset everything
+    if (BADGE_MODE == WIFI_MODE) {
+    //check if there are any new clients
+    if (telnetServer.hasClient()) {
+      //find free/disconnected spot
+      if (!telnetServerClient.connected()) {
+        telnetServerClient.stop();
+        telnetServerClient = telnetServer.available();
+      } else {
+        telnetServer.available().stop();
+      }
+
+      printStartupHeader();
+      //Display the '>' prompt and wait for input
+      print("> ");
+      inputWord = ""; //reset everything
+    }
+
+    if (telnetServerClient && telnetServerClient.connected()) {
+      if (telnetServerClient.available())
+      {
+        inputChar = telnetServerClient.read();
+        telnetServerClient.print(inputChar);
+        if ((inputChar == 127) || (inputChar == 8))
+        {
+          if (inputWord.length() > 0)
+          {
+            inputWord = inputWord.substring(0, inputWord.length() - 1);
+          }
+        }
+        else
+        {
+          inputWord += inputChar;
+        }
+
+        if (inputChar == '\r') {
+          inputWord.trim();
+          line = inputWord;
+          println("");
+          parse_command_line();
+          println("");
+          //Display the '>' prompt and wait for input
+          print("> ");
+
+          inputWord = ""; //reset everything
+        }
+      }
+    }
   }
-#endif
+
+  if (Serial.available())
+  {
+    inputChar = Serial.read();
+    Serial.print(inputChar);
+    if ((inputChar == 127) || (inputChar == 8))
+    {
+      if (inputWord.length() > 0)
+      {
+        inputWord = inputWord.substring(0, inputWord.length() - 1);
+      }
+    }
+    else
+    {
+      inputWord += inputChar;
+    }
+
+    if (inputChar == '\r') {
+      inputWord.trim();
+      line = inputWord;
+      println("");
+      parse_command_line();
+      println("");
+      //Display the '>' prompt and wait for input
+      print("> ");
+
+      inputWord = ""; //reset everything
+    }
+  }
+
+
 
   if (isRunning) {
     if (current_line != program.end()) {
@@ -190,52 +256,78 @@ void loop()
     }
   }
 
-  if (telnetServerClient && telnetServerClient.connected()) {
-    if (telnetServerClient.available())
-    {
-      inputChar = telnetServerClient.read();
-      telnetServerClient.print(inputChar);
-      if ((inputChar == 127) || (inputChar == 8))
-      {
-        if (inputWord.length() > 0)
-        {
-          inputWord = inputWord.substring(0, inputWord.length() - 1);
-        }
-      }
-      else
-      {
-        inputWord += inputChar;
-      }
+  ESP.wdtFeed(); //feed the watchdog timer so that it won't reset the esp.
 
-      if (inputChar == '\r') {
-        inputWord.trim();
-        line = inputWord;
-        println("");
-        parse_command_line();
-        println("");
-        Serial.println("[" + line + "]");
-        printAsHex(line);
-        //Display the '>' prompt and wait for input
-        print("> ");
-
-        inputWord = ""; //reset everything
-      }
+  if (BADGE_MODE == BLINKY_MODE) {
+    if (leds_changed) {
+      FastLED.show();
     }
   }
-
-  ESP.wdtFeed(); //feed the watchdog timer so that it won't reset the esp.
-  
-  //Update leds if neccessary
-  if (leds_changed) {
-    if (leds_fill) {
-      fill_solid(leds, NUM_LEDS, CRGB(led_fill_color[0], led_fill_color[1], led_fill_color[2]));
-    }
-    leds_changed = false;
-    leds_fill = false;
-    FastLED.show(); //update LED's
-  }  
 }
 
+//Used to indicate its in Wifi mode
+void StartBurstAnimation() {
+  FastLED.clear();
+  fill_solid(leds, NUM_LEDS, CRGB(0, 0, 0));
+  FastLED.show();
+
+  for (int i = 0; i < 5; i++) {
+    leds[i].setRGB(0, 0, 255);
+    leds[9 - i].setRGB(0, 0, 255);
+    leds[i + 10].setRGB(0, 0, 255);
+    FastLED.show();
+    leds[i].setRGB(0, 0, 0);
+    leds[9 - i].setRGB(0, 0, 0);
+    leds[i + 10].setRGB(0, 0, 0);
+    delay(90);
+  }
+//  FastLED.show();
+}
+
+void RainbowRingAnimation(){
+  FastLED.clear();
+  fill_solid(leds, NUM_LEDS, CRGB(0, 0, 0));
+  FastLED.show();
+
+  leds[0].setRGB(255,0,0);
+  leds[9].setRGB(255,0,0);
+  leds[10].setRGB(255,0,0);
+  FastLED.show();
+  delay(90);
+
+  leds[1].setRGB(255,255,0);
+  leds[8].setRGB(255,255,0);
+  leds[11].setRGB(255,255,0);
+  FastLED.show();
+  delay(90);
+
+  leds[2].setRGB(0,255,0);
+  leds[7].setRGB(0,255,0);
+  leds[12].setRGB(0,255,0);
+  FastLED.show();
+  delay(90);
+
+  leds[3].setRGB(0,0,255);
+  leds[6].setRGB(0,0,255);
+  leds[13].setRGB(0,0,255);
+  FastLED.show();
+  delay(90);
+
+  leds[4].setRGB(255,0,255);
+  leds[5].setRGB(255,0,255);
+  leds[14].setRGB(255,0,255);
+  FastLED.show();
+  delay(180);
+  
+  for (int i = 0; i < 5; i++) {
+    leds[i].setRGB(0, 0, 0);
+    leds[9 - i].setRGB(0, 0, 0);
+    leds[i + 10].setRGB(0, 0, 0);
+    FastLED.show();
+    delay(90);
+  }
+    
+}
 
 //Nothin in here should block
 void parse_command_line() {
@@ -929,7 +1021,6 @@ void list_program()
   println("Listing Program");
   for (auto const &item : program)
   {
-    ESP.wdtFeed(); //feed the watchdog timer so that it won't reset the esp.
     print(String(item.first));
     print("\t");
     println(item.second);
@@ -1100,22 +1191,21 @@ void set_foreColour(int c) {
   if ((c > 7) && (c < 16)) {
     c = c - 8;
     c = get_ansiColourCode(c); //Convert the colour to a ansi colour.
-#ifdef ENABLE_TELNET
-    if (telnetServerClient && telnetServerClient.connected()) {
-      telnetServerClient.printf("\x1b[1;%dm", c); //Bright
+    if (BADGE_MODE == WIFI_MODE) {
+      if (telnetServerClient && telnetServerClient.connected()) {
+        telnetServerClient.printf("\x1b[1;%dm", c); //Bright
+      }
     }
-#else
+
     Serial.printf("\x1b[1;%dm", c); //Bright
-#endif
   }  else if (c <= 7) {
     c = get_ansiColourCode(c); //Convert the colour to a ansi colour.
-#ifdef ENABLE_TELNET
-    if (telnetServerClient && telnetServerClient.connected()) {
-      telnetServerClient.printf("\x1b[22;%dm", c); //Dim
+    if (BADGE_MODE == WIFI_MODE) {
+      if (telnetServerClient && telnetServerClient.connected()) {
+        telnetServerClient.printf("\x1b[22;%dm", c); //Dim
+      }
     }
-#else
     Serial.printf("\x1b[22;%dm", c); //Dim
-#endif
   }
 }
 
@@ -1140,22 +1230,22 @@ void set_backColour(int c) {
   if ((c > 7) && (c < 16)) {
     c = c - 8;
     c = get_ansiColourCode(c) + 10; //Convert the colour to a ansi colour + 10 to shift it to a background colour.
-#ifdef ENABLE_TELNET
-    if (telnetServerClient && telnetServerClient.connected()) {
-      telnetServerClient.printf("\x1b[1;%dm", c); //Bright
+    if (BADGE_MODE == WIFI_MODE) {
+      if (telnetServerClient && telnetServerClient.connected()) {
+        telnetServerClient.printf("\x1b[1;%dm", c); //Bright
+      }
     }
-#else
     Serial.printf("\x1b[1;%dm", c); //Bright
-#endif
+
   }  else if (c <= 7) {
     c = get_ansiColourCode(c) + 10; //Convert the colour to a ansi colour + 10 to shift it to a background colour.
-#ifdef ENABLE_TELNET
-    if (telnetServerClient && telnetServerClient.connected()) {
-      telnetServerClient.printf("\x1b[22;%dm", c); //Dim
+    if (BADGE_MODE == WIFI_MODE) {
+      if (telnetServerClient && telnetServerClient.connected()) {
+        telnetServerClient.printf("\x1b[22;%dm", c); //Dim
+      }
     }
-#else
     Serial.printf("\x1b[22;%dm", c); //Dim
-#endif
+
   }
 }
 
@@ -1179,13 +1269,14 @@ void parse_move() {
     return;
   }
   int y = parse_expression();
-#ifdef ENABLE_TELNET
-  if (telnetServerClient && telnetServerClient.connected()) {
-    telnetServerClient.printf("\x1b[%d;%dH", y, x);
+  if (BADGE_MODE == WIFI_MODE) {
+
+    if (telnetServerClient && telnetServerClient.connected()) {
+      telnetServerClient.printf("\x1b[%d;%dH", y, x);
+    }
   }
-#else
   Serial.printf("\x1b[%d;%dH", y, x);
-#endif
+
 }
 
 void parse_sleep() {
@@ -1197,13 +1288,13 @@ void parse_sleep() {
 }
 
 void parse_cls() {
-#ifdef ENABLE_TELNET
-  if (telnetServerClient && telnetServerClient.connected()) {
-    telnetServerClient.printf("\x1b[2J \x1b[0;0H");
+  if (BADGE_MODE == WIFI_MODE) {
+    if (telnetServerClient && telnetServerClient.connected()) {
+      telnetServerClient.printf("\x1b[2J \x1b[0;0H");
+    }
   }
-#else
   Serial.printf("\x1b[2J \x1b[0;0H");
-#endif
+
 }
 
 void parse_led() {
@@ -1260,83 +1351,60 @@ void parse_led() {
     }
   }
 
-  if (on)
-    leds[ledNo].setRGB(r, g, b);
-  else
-    leds[ledNo] = CRGB::Black;
+  if (BADGE_MODE == BLINKY_MODE) {
 
-  leds_changed = true;
+    if (on)
+      leds[ledNo].setRGB(r, g, b);
+    else
+      leds[ledNo] = CRGB::Black;
 
+    leds_changed = true;
+  }
+}
 
-  //TODO:Investigate why this crashes
-  //Removed as it causes a crash
-  //printFreeRAM();
-  //byte buf[4] = {ledNo,r,g,b};
-  //ws.binaryAll( (char*)buf);
-  //ws.printfAll("led%d|%d,%d,%d",ledNo,r,g,b);
+void print (char c) {
+  if (BADGE_MODE == WIFI_MODE) {
+    if (telnetServerClient && telnetServerClient.connected()) {
+      telnetServerClient.print(c);
+    }
+  }
+
+  Serial.print(c);
+
 }
 
 void print(String s)
 {
-#ifdef ENABLE_TELNET
-  if (telnetServerClient && telnetServerClient.connected()) {
-    telnetServerClient.print(s);
+  if (BADGE_MODE == WIFI_MODE) {
+    if (telnetServerClient && telnetServerClient.connected()) {
+      telnetServerClient.print(s);
+    }
   }
-#else
+
   Serial.print(s);
-#endif
 }
 
 void print(int i)
 {
-#ifdef ENABLE_TELNET
-  if (telnetServerClient && telnetServerClient.connected()) {
-    telnetServerClient.print(i);
+  if (BADGE_MODE == WIFI_MODE) {
+
+    if (telnetServerClient && telnetServerClient.connected()) {
+      telnetServerClient.print(i);
+    }
   }
-#else
-  Serial.print(i)
-#endif
+  Serial.print(i);
 }
 
 void println(String s)
 {
-#ifdef ENABLE_TELNET
-  if (telnetServerClient && telnetServerClient.connected()) {
-    telnetServerClient.println(s);
+  if (BADGE_MODE == WIFI_MODE) {
+
+    if (telnetServerClient && telnetServerClient.connected()) {
+      telnetServerClient.println(s);
+    }
   }
-#else
   Serial.println(s);
-#endif
-}
 
-String gettermlineTelnet()
-{
-  String inputWord = "";
-  char inputChar;
-
-  if (telnetServerClient && telnetServerClient.connected()) {
-    do
-    {
-      if (telnetServerClient.available())
-      {
-        inputChar = telnetServerClient.read();
-        telnetServerClient.print(inputChar);
-        if ((inputChar == 127) || (inputChar == 8))
-        {
-          if (inputWord.length() > 0)
-          {
-            inputWord = inputWord.substring(0, inputWord.length() - 1);
-          }
-        }
-        else
-        {
-          inputWord += inputChar;
-        }
-      }
-    } while (inputChar != '\r');
-  }
-  inputWord.trim();
-  return inputWord;
 }
 
 String gettermline() {
@@ -1571,11 +1639,6 @@ String getMacAddress() {
   }
   cMac.toUpperCase();
   return cMac;
-}
-
-//ISR that gets run when the program button is pressed.
-void displayPassword() {
-  //TODO: add code here to display password on LED's
 }
 
 
