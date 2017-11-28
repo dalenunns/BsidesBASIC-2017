@@ -863,6 +863,7 @@ void list_program()
   println("Listing Program");
   for (auto const &item : program)
   {
+    ESP.wdtFeed(); //feed the watchdog timer so that it won't reset the esp.
     print(String(item.first));
     print("\t");
     println(item.second);
@@ -975,6 +976,7 @@ void parse_for() {
 }
 
 void parse_next() {
+  ESP.wdtFeed(); //feed the watchdog timer so that it won't reset the esp.
   if (!match_float_varname()) {
     error_occurred("Variable Expected - NEXT");
     return;
@@ -1014,6 +1016,7 @@ void parse_next() {
 }
 
 void parse_loop() {
+  ESP.wdtFeed(); //feed the watchdog timer so that it won't reset the esp.
   if (match_nocase("while")) {
     if (parse_disjunction()) {
       current_line = program.find(stack.top());
@@ -1128,6 +1131,7 @@ void parse_move() {
 void parse_sleep() {
   int s = parse_expression();
   for (int d = 0; d < s; d++) {
+    ESP.wdtFeed(); //feed the watchdog timer so that it won't reset the esp.
     delay(1);
   }
 }
@@ -1313,6 +1317,7 @@ int freeRam()
 
 void printAsHex(String s) {
   for (int i = 0; i < s.length(); i++) {
+    ESP.wdtFeed(); //feed the watchdog timer so that it won't reset the esp.
 #ifdef ENABLE_TELNET
     if (telnetServerClient && telnetServerClient.connected()) {
       telnetServerClient.print((byte)s[i], HEX);
@@ -1386,6 +1391,7 @@ void save_program() {
   File saveFile = SPIFFS.open(file, "w");
   for (auto const &item : program)
   {
+    ESP.wdtFeed(); //feed the watchdog timer so that it won't reset the esp.
     saveFile.print(String(item.first));
     saveFile.print(" ");
     saveFile.println(item.second);
@@ -1444,6 +1450,7 @@ void onUpload(AsyncWebServerRequest *request, String filename, size_t index, uin
 }
 
 void onEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventType type, void * arg, uint8_t *data, size_t len) {
+  ESP.wdtFeed(); //feed the watchdog timer so that it won't reset the esp.
   if (type == WS_EVT_CONNECT) {
     //client connected
     //Serial.printf("ws[%s][%u] connect\n", server->url(), client->id());
@@ -1471,12 +1478,14 @@ void onEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventTyp
         if (info->len == 4) {
           if (data[0] < NUM_LEDS) {
             leds[data[0]].setRGB(data[1], data[2], data[3]);
+            ESP.wdtFeed(); //feed the watchdog timer so that it won't reset the esp.
             FastLED.show();
             ws.binaryAll(data, 4);
           } else if (data[0] == 255) {
             for (int i =0; i < NUM_LEDS; i++) {
               leds[data[i]].setRGB(data[1], data[2], data[3]);  
             }
+            ESP.wdtFeed(); //feed the watchdog timer so that it won't reset the esp.
             FastLED.show();
             ws.binaryAll(data, 4);
           }

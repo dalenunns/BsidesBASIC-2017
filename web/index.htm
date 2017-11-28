@@ -86,11 +86,11 @@
     var socket = new WebSocket("ws://192.168.4.1/ws");
 
     socket.onerror = function (error) {
-        console.log('WebSocket Error: ' + error);
+        console.log('WebSocket Error: ' , error);
     }
 
     socket.onopen = function (event) {
-        console.log('Connected to: ' + event.currentTarget.url);
+        console.log('Connected to: ' , event.currentTarget.url);
     }
 
     socket.onmessage = function (event) {
@@ -113,11 +113,11 @@
                     }
                 }
 
-                console.log('RX ArrayBuffer: '+buf2hex(bytearray))
+                console.log('RX ArrayBuffer: ',buf2hex(bytearray))
             }
 
         }
-        console.log('Received Msg: ' + message);
+        console.log('Received Msg: ', message);
     }
 
     function buf2hex(buffer) {
@@ -221,7 +221,7 @@
         socket.binaryType = "arraybuffer";
         socket.send(data)
 
-        console.log('TX ArrayBuffer: '+buf2hex(data))
+        console.log('TX ArrayBuffer: ',buf2hex(data))
     }
 
     function setAllClick() {
@@ -235,7 +235,7 @@
         socket.binaryType = "arraybuffer";
         socket.send(data)
 
-        console.log('TX ArrayBuffer: '+buf2hex(data))
+        console.log('TX ArrayBuffer: ',buf2hex(data))
     }
 
     function sendBASICCommand() {
@@ -246,7 +246,7 @@
     function sendBASICLine(line) {
         line = "BS:"+line
         socket.send(line)
-        console.log('TX String: '+line)
+        console.log('TX String: ',line)
     }
 
     function hex2rgb(hexStr) {
