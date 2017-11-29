@@ -1383,6 +1383,60 @@ void parse_led_brightness() {
   }
 }
 
+void parse_led_set() {
+  byte r = 0;
+  byte g = 0;
+  byte b = 0;
+  skip_whitespace();
+
+  byte ledNo = parse_expression();
+
+  skip_whitespace();
+
+  if (match(",")) {
+    skip_whitespace();
+    if (match_nocase("rgb")) {
+      skip_whitespace();
+      if (!match("(")) {
+        error_occurred("Missing (");
+        return;
+      }
+      skip_whitespace();
+      r = parse_expression();
+
+      if (!match(",")) {
+        error_occurred("Missing ,");
+        return;
+      }
+      skip_whitespace();
+      g = parse_expression();
+
+      if (!match(",")) {
+        error_occurred("Missing ,");
+        return;
+      }
+      skip_whitespace();
+      b = parse_expression();
+
+      if (!match(")")) {
+        error_occurred("Missing )");
+        return;
+      }
+    }
+  }
+
+  if (BADGE_MODE == BLINKY_MODE) {
+    leds[ledNo].setRGB(r, g, b);
+  }
+
+}
+
+void parse_led_show() {
+  if (BADGE_MODE == BLINKY_MODE) {
+    leds_changed = true;
+  }
+}
+
 void parse_led() {
   bool on = false;
 
@@ -1393,9 +1447,13 @@ void parse_led() {
   skip_whitespace();
 
   if (match_nocase("fill")) {
-  parse_led_fill();
+    parse_led_fill();
   } else if (match_nocase("brightness")) {
-  parse_led_brightness();
+    parse_led_brightness();
+  } else if (match_nocase("set")) {
+    parse_led_set();
+  } else if (match_nocase("show")) {
+    parse_led_show();
   } else {
     if (match_nocase("on")) {
       on = true;
@@ -1543,6 +1601,9 @@ void print_help() {
   println("  LED ON/OFF - turn an LED on/off");
   println("  LED BRIGHTNESS - set the LED brightness (1-255)");
   println("  LED FILL - set all the LEDs to rgb(r,g,b)");
+  println("  LED SET - set a specific LED to rgb(r,g,b) value");
+  println("  LED SHOW - update leds to previously set values");
+  
   println("");
   println("INTERPRETER COMMANDS");
   println("  MEM - show free memory");
