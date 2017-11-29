@@ -112,11 +112,14 @@ void SetupBlinkyMode() {
   printStartupHeader();
   //Display the '>' prompt and wait for input
   print("> ");
+
+  run_startup();
 }
 
 bool runOnce = false;
 //Sets up WIFI config mode which runs the HTTP server, badge emulator and telnet. NO LED's IN THIS MODE
 void SetupWifiConfigMode() {
+  stop_program();
   BADGE_MODE = WIFI_MODE;
   if (!runOnce) {
     runOnce = true;
@@ -159,6 +162,26 @@ void SetupWifiConfigMode() {
   }
 }
 
+void run_startup() {
+  String file = "/startup.bas";
+  if (SPIFFS.exists("/startup.bas")) {
+    println("Launching STARTUP.BAS");
+    program.clear(); //Clear the current in memory program
+
+    if (SPIFFS.exists(file)) {
+      File loadFile = SPIFFS.open(file, "r");
+      while (loadFile.available()) {
+        cursor = 0;
+        line = loadFile.readStringUntil('\n');
+        line.trim();
+        parse_line();
+      }
+      loadFile.close();
+
+      run_program();
+    }
+  }
+}
 
 /*
 
@@ -366,6 +389,8 @@ void parse_command_line() {
   else if (match_nocase("run"))
   {
     run_program();
+  } else if (match_nocase("stop")) {
+    stop_program();
   }
   else if (match_nocase("clear"))
   {
@@ -399,6 +424,8 @@ void parse_command_line() {
     if (DEBUG_MODE) {
       format();
     }
+  } else if (match_nocase("view")) {
+    view();
   } else if (match_nocase("flash")) {
     flash_info();
   }
@@ -1062,6 +1089,11 @@ void run_program()
   isRunning = true;
 }
 
+void stop_program() {
+  println("Program stopped");
+  isRunning = false;
+}
+
 void parse_goto()
 {
   ESP.wdtFeed(); //feed the watchdog timer so that it won't reset the esp.
@@ -1603,17 +1635,20 @@ void print_help() {
   println("  LED FILL - set all the LEDs to rgb(r,g,b)");
   println("  LED SET - set a specific LED to rgb(r,g,b) value");
   println("  LED SHOW - update leds to previously set values");
-  
+
   println("");
   println("INTERPRETER COMMANDS");
   println("  MEM - show free memory");
+  println("  RUN - run currently in memory program");
+  println("  STOP - stop currently running program");
   println("  NEW - clear current program");
   println("  CLEAR - reset interpreter state (reset variables)");
-  println("  LIST - list current program");
+  println("  LIST - list current in memory program");
   println("  LOAD - load program from flash");
   println("  SAVE - save program to flash");
   println("  DIR - list files in flash");
   println("  DEL - delete specified file from flash");
+  println("  VIEW - display contents of file in flash");
   println("  DEBUG - enable debug mode (development)");
   println("");
 }
@@ -1634,6 +1669,20 @@ void load_program() {
   } else {
     println(file + " - FILE NOT FOUND");
   }
+}
+
+void view() {
+  String file = parse_value();
+  if (SPIFFS.exists(file)) {
+    File loadFile = SPIFFS.open(file, "r");
+    while (loadFile.available()) {
+      println(loadFile.readStringUntil('\n'));
+    }
+    loadFile.close();
+  } else {
+    println(file + " - FILE NOT FOUND");
+  }
+
 }
 
 void save_program() {
@@ -1686,16 +1735,16 @@ void flash_info() {
   println(" Mode:" + String(ESP.getFlashChipMode()));
 }
 
-void onRequest(AsyncWebServerRequest *request) {
+void onRequest(AsyncWebServerRequest * request) {
   //Handle Unknown Request
   request->send(404);
 }
 
-void onBody(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+void onBody(AsyncWebServerRequest * request, uint8_t *data, size_t len, size_t index, size_t total) {
   //Handle body
 }
 
-void onUpload(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final) {
+void onUpload(AsyncWebServerRequest * request, String filename, size_t index, uint8_t *data, size_t len, bool final) {
   //Handle upload
 }
 
