@@ -417,6 +417,9 @@ void parse_statement()
   } else {
 
     String stmt = token;
+    if (DEBUG_MODE) {
+      println("dbg - token:" + token);
+    }
 
     if (stmt.equalsIgnoreCase("let"))
       parse_let();
@@ -454,10 +457,6 @@ void parse_statement()
       parse_sleep();
     else if (stmt.equalsIgnoreCase("led"))
       parse_led();
-    else if (stmt.equalsIgnoreCase("led.brightness"))
-      parse_led_brightness();
-    else if (stmt.equalsIgnoreCase("led.fill"))
-      parse_led_fill();
     else
       error_occurred("Unknown Statement");
     //throw runtime_error("Unknown Statement");
@@ -579,6 +578,14 @@ bool match_string()
 bool match_eol()
 {
   skip_whitespace();
+  if (DEBUG_MODE) {
+    print("eol cursor:");
+    print(cursor);
+    print(" len:");
+    print((int)line.length());
+    println("");
+    println("dbg - line:" + line);
+  }
   return (cursor >= line.length());
 }
 
@@ -1062,8 +1069,11 @@ void parse_goto()
   int line_num = parse_expression();
   if (program.find(line_num) != program.end())
   {
+    //cursor = (current_line->second).length(); //Makes sure it ignores everything else on a line eg: 10 GOTO 20: Print "hi" (Print "hi" won't get run)
     current_line = program.find(line_num);
-    cursor = (current_line->second).length(); //Makes sure it ignores everything else on a line eg: 10 GOTO 20: Print "hi" (Print "hi" won't get run)
+    if (DEBUG_MODE) {
+      println("dbg: " + current_line->second);
+    }
   }
   else
   {
@@ -1381,60 +1391,67 @@ void parse_led() {
   byte b = 0;
 
   skip_whitespace();
-  if (match_nocase("on")) {
-    on = true;
-  } else if (match_nocase("off")) {
-    on = false;
-  }
 
-  if (!match(",")) {
-    error_occurred("Missing ,");
-    return;
-  }
+  if (match_nocase("fill")) {
+  parse_led_fill();
+  } else if (match_nocase("brightness")) {
+  parse_led_brightness();
+  } else {
+    if (match_nocase("on")) {
+      on = true;
+    } else if (match_nocase("off")) {
+      on = false;
+    }
 
-  byte ledNo = parse_expression();
+    if (!match(",")) {
+      error_occurred("Missing ,");
+      return;
+    }
 
-  skip_whitespace();
-  if (match(",")) {
+    byte ledNo = parse_expression();
+
     skip_whitespace();
-    if (match_nocase("rgb")) {
+    if (match(",")) {
       skip_whitespace();
-      if (!match("(")) {
-        error_occurred("Missing (");
-        return;
-      }
-      skip_whitespace();
-      r = parse_expression();
+      if (match_nocase("rgb")) {
+        skip_whitespace();
+        if (!match("(")) {
+          error_occurred("Missing (");
+          return;
+        }
+        skip_whitespace();
+        r = parse_expression();
 
-      if (!match(",")) {
-        error_occurred("Missing ,");
-        return;
-      }
-      skip_whitespace();
-      g = parse_expression();
+        if (!match(",")) {
+          error_occurred("Missing ,");
+          return;
+        }
+        skip_whitespace();
+        g = parse_expression();
 
-      if (!match(",")) {
-        error_occurred("Missing ,");
-        return;
-      }
-      skip_whitespace();
-      b = parse_expression();
+        if (!match(",")) {
+          error_occurred("Missing ,");
+          return;
+        }
+        skip_whitespace();
+        b = parse_expression();
 
-      if (!match(")")) {
-        error_occurred("Missing )");
-        return;
+        if (!match(")")) {
+          error_occurred("Missing )");
+          return;
+        }
       }
     }
-  }
 
-  if (BADGE_MODE == BLINKY_MODE) {
+    if (BADGE_MODE == BLINKY_MODE) {
 
-    if (on)
-      leds[ledNo].setRGB(r, g, b);
-    else
-      leds[ledNo] = CRGB::Black;
+      if (on)
+        leds[ledNo].setRGB(r, g, b);
+      else
+        leds[ledNo] = CRGB::Black;
 
-    leds_changed = true;
+      leds_changed = true;
+    }
   }
 }
 
@@ -1524,7 +1541,8 @@ void print_help() {
   println("  SET BACK - set the text background colour");
   println("  END - specify the end of a program");
   println("  LED ON/OFF - turn an LED on/off");
-  println("  LED.BRIGHTNESS - set the LED brightness (1-255)");
+  println("  LED BRIGHTNESS - set the LED brightness (1-255)");
+  println("  LED FILL - set all the LEDs to rgb(r,g,b)");
   println("");
   println("INTERPRETER COMMANDS");
   println("  MEM - show free memory");
