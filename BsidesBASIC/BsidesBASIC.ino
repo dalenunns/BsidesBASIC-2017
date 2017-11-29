@@ -25,7 +25,7 @@
 #define TELNET_PORT 88 //Set to port 88 to avoid having to negotiate the telnet RFC
 
 //FastLED library to control LED's
-//#define FASTLED_ESP8266_RAW_PIN_ORDER //Sets the Pin Order to RAW mode see https://github.com/FastLED/FastLED/wiki/ESP8266-notes
+#define FASTLED_ESP8266_RAW_PIN_ORDER //Sets the Pin Order to RAW mode see https://github.com/FastLED/FastLED/wiki/ESP8266-notes
 
 //#define FASTLED_INTERRUPT_RETRY_COUNT 0
 //#define FASTLED_ALLOW_INTERRUPTS 0
@@ -64,6 +64,10 @@ AsyncWebSocket ws("/ws");
 WiFiServer telnetServer(TELNET_PORT);
 WiFiClient telnetServerClient;
 
+/*
+   Because of timing/interrupts issues with driving the WS2812 'NeoPixel' LED's we can't have WiFi + LED's.
+   The badge starts in BLINKY MODE as some badges (like @HypnZA) are unstable in the WiFi enabled mode.
+*/
 #define BLINKY_MODE 0
 #define WIFI_MODE 1
 
@@ -90,30 +94,38 @@ void setup()
   SetupBlinkyMode();
 }
 
-//The badge has been split into 2 modes as it can't run both the LED's and the Wifi without one of the two dieing.
+//Setups Blinky mode which is running the BASIC interpreter on a serial console and the LED's
 void SetupBlinkyMode() {
   BADGE_MODE = BLINKY_MODE;
+  //Make sure WIFI is off.
   WiFi.mode(WIFI_OFF);
   //Setup WS2812's on pin GPIO 12 (assuming RAW pin layout)
   FastLED.addLeds<NEOPIXEL, 12>(leds, NUM_LEDS);
+  //Set the default brightness low so that we don't blink people / waste battery life
   FastLED.setBrightness(32);
   FastLED.clear();
   FastLED.show();
 
+  //Run the start up animation
   RainbowRingAnimation();
+
+  printStartupHeader();
+  //Display the '>' prompt and wait for input
+  print("> ");
 }
 
 bool runOnce = false;
-
+//Sets up WIFI config mode which runs the HTTP server, badge emulator and telnet. NO LED's IN THIS MODE
 void SetupWifiConfigMode() {
   BADGE_MODE = WIFI_MODE;
   if (!runOnce) {
     runOnce = true;
+    //Quick animation to show you're going into config mode, leave some LED's on so you can find victim's :-)
     StartBurstAnimation();
     String ssid = "BADGE_" + getMacAddress();
 
     WiFi.softAP(ssid.c_str()); //Enable the soft AP, no password specified to make life easier for now.
-    delay(100);
+    delay(100); //Delay to give the WIFI a chance to turn on.
 
     //Setup WebServer
     IPAddress myIP = WiFi.softAPIP();
@@ -161,11 +173,12 @@ bool isRunning = false;
 
 void loop()
 {
+  //See if the button was pressed to put the badge into WiFi mode.
   if (digitalRead(0) == 0) {
     SetupWifiConfigMode();
-    }
+  }
 
-    if (BADGE_MODE == WIFI_MODE) {
+  if (BADGE_MODE == WIFI_MODE) {
     //check if there are any new clients
     if (telnetServer.hasClient()) {
       //find free/disconnected spot
@@ -281,44 +294,45 @@ void StartBurstAnimation() {
     leds[i + 10].setRGB(0, 0, 0);
     delay(90);
   }
-//  FastLED.show();
+  //  FastLED.show();
 }
 
-void RainbowRingAnimation(){
+//Simple startup animation
+void RainbowRingAnimation() {
   FastLED.clear();
   fill_solid(leds, NUM_LEDS, CRGB(0, 0, 0));
   FastLED.show();
 
-  leds[0].setRGB(255,0,0);
-  leds[9].setRGB(255,0,0);
-  leds[10].setRGB(255,0,0);
+  leds[0].setRGB(255, 0, 0);
+  leds[9].setRGB(255, 0, 0);
+  leds[10].setRGB(255, 0, 0);
   FastLED.show();
   delay(90);
 
-  leds[1].setRGB(255,255,0);
-  leds[8].setRGB(255,255,0);
-  leds[11].setRGB(255,255,0);
+  leds[1].setRGB(255, 255, 0);
+  leds[8].setRGB(255, 255, 0);
+  leds[11].setRGB(255, 255, 0);
   FastLED.show();
   delay(90);
 
-  leds[2].setRGB(0,255,0);
-  leds[7].setRGB(0,255,0);
-  leds[12].setRGB(0,255,0);
+  leds[2].setRGB(0, 255, 0);
+  leds[7].setRGB(0, 255, 0);
+  leds[12].setRGB(0, 255, 0);
   FastLED.show();
   delay(90);
 
-  leds[3].setRGB(0,0,255);
-  leds[6].setRGB(0,0,255);
-  leds[13].setRGB(0,0,255);
+  leds[3].setRGB(0, 0, 255);
+  leds[6].setRGB(0, 0, 255);
+  leds[13].setRGB(0, 0, 255);
   FastLED.show();
   delay(90);
 
-  leds[4].setRGB(255,0,255);
-  leds[5].setRGB(255,0,255);
-  leds[14].setRGB(255,0,255);
+  leds[4].setRGB(255, 0, 255);
+  leds[5].setRGB(255, 0, 255);
+  leds[14].setRGB(255, 0, 255);
   FastLED.show();
   delay(180);
-  
+
   for (int i = 0; i < 5; i++) {
     leds[i].setRGB(0, 0, 0);
     leds[9 - i].setRGB(0, 0, 0);
@@ -326,7 +340,7 @@ void RainbowRingAnimation(){
     FastLED.show();
     delay(90);
   }
-    
+
 }
 
 //Nothin in here should block
@@ -382,7 +396,9 @@ void parse_command_line() {
   {
     del();
   } else if (match_nocase("format")) {
-    format();
+    if (DEBUG_MODE) {
+      format();
+    }
   } else if (match_nocase("flash")) {
     flash_info();
   }
@@ -395,51 +411,57 @@ void parse_command_line() {
 
 void parse_statement()
 {
-  if (!match_keyword())
+  if (!match_keyword()) {
     error_occurred("Syntax Error - Statement Expected");
-  //throw runtime_error("Syntax Error - Statement Excpected"); //TODO Change this to a custom exception
+    //throw runtime_error("Syntax Error - Statement Excpected"); //TODO Change this to a custom exception
+  } else {
 
-  String stmt = token;
+    String stmt = token;
 
-  if (stmt.equalsIgnoreCase("let"))
-    parse_let();
-  else if (stmt.equalsIgnoreCase("print"))
-    parse_print();
-  else if (stmt.equalsIgnoreCase("println"))
-    parse_println();
-  else if (stmt.equalsIgnoreCase("if"))
-    parse_if();
-  else if (stmt.equalsIgnoreCase("goto"))
-    parse_goto();
-  else if (stmt.equalsIgnoreCase("gosub"))
-    parse_gosub();
-  else if (stmt.equalsIgnoreCase("return"))
-    parse_return();
-  else if (stmt.equalsIgnoreCase("end"))
-    parse_end();
-  else if (stmt.equalsIgnoreCase("do"))
-    parse_do();
-  else if (stmt.equalsIgnoreCase("loop"))
-    parse_loop();
-  else if (stmt.equalsIgnoreCase("for"))
-    parse_for();
-  else if (stmt.equalsIgnoreCase("next"))
-    parse_next();
-  else if (stmt.equalsIgnoreCase("rem"))
-    cursor = line.length();
-  else if (stmt.equalsIgnoreCase("set"))
-    parse_set();
-  else if (stmt.equalsIgnoreCase("cls"))
-    parse_cls();
-  else if (stmt.equalsIgnoreCase("move"))
-    parse_move();
-  else if (stmt.equalsIgnoreCase("sleep"))
-    parse_sleep();
-  else if (stmt.equalsIgnoreCase("led"))
-    parse_led();
-  else
-    error_occurred("Unknown Statement");
-  //throw runtime_error("Unknown Statement");
+    if (stmt.equalsIgnoreCase("let"))
+      parse_let();
+    else if (stmt.equalsIgnoreCase("print"))
+      parse_print();
+    else if (stmt.equalsIgnoreCase("println"))
+      parse_println();
+    else if (stmt.equalsIgnoreCase("if"))
+      parse_if();
+    else if (stmt.equalsIgnoreCase("goto"))
+      parse_goto();
+    else if (stmt.equalsIgnoreCase("gosub"))
+      parse_gosub();
+    else if (stmt.equalsIgnoreCase("return"))
+      parse_return();
+    else if (stmt.equalsIgnoreCase("end"))
+      parse_end();
+    else if (stmt.equalsIgnoreCase("do"))
+      parse_do();
+    else if (stmt.equalsIgnoreCase("loop"))
+      parse_loop();
+    else if (stmt.equalsIgnoreCase("for"))
+      parse_for();
+    else if (stmt.equalsIgnoreCase("next"))
+      parse_next();
+    else if (stmt.equalsIgnoreCase("rem"))
+      cursor = line.length();
+    else if (stmt.equalsIgnoreCase("set"))
+      parse_set();
+    else if (stmt.equalsIgnoreCase("cls"))
+      parse_cls();
+    else if (stmt.equalsIgnoreCase("move"))
+      parse_move();
+    else if (stmt.equalsIgnoreCase("sleep"))
+      parse_sleep();
+    else if (stmt.equalsIgnoreCase("led"))
+      parse_led();
+    else if (stmt.equalsIgnoreCase("led.brightness"))
+      parse_led_brightness();
+    else if (stmt.equalsIgnoreCase("led.fill"))
+      parse_led_fill();
+    else
+      error_occurred("Unknown Statement");
+    //throw runtime_error("Unknown Statement");
+  }
 }
 
 void printStartupHeader() {
@@ -1297,6 +1319,60 @@ void parse_cls() {
 
 }
 
+
+void parse_led_fill() {
+  byte r = 0;
+  byte g = 0;
+  byte b = 0;
+
+  skip_whitespace();
+  if (match_nocase("rgb")) {
+    skip_whitespace();
+    if (!match("(")) {
+      error_occurred("Missing (");
+      return;
+    }
+    skip_whitespace();
+    r = parse_expression();
+
+    if (!match(",")) {
+      error_occurred("Missing ,");
+      return;
+    }
+    skip_whitespace();
+    g = parse_expression();
+
+    if (!match(",")) {
+      error_occurred("Missing ,");
+      return;
+    }
+    skip_whitespace();
+    b = parse_expression();
+
+    if (!match(")")) {
+      error_occurred("Missing )");
+      return;
+    }
+  }
+
+  if (BADGE_MODE == BLINKY_MODE) {
+    fill_solid(leds, NUM_LEDS, CRGB(r, g, b));
+    leds_changed = true;
+  }
+}
+
+
+void parse_led_brightness() {
+  int b = parse_expression();
+
+  if ((b > 0) && (b <= 255)) {
+    if (BADGE_MODE == BLINKY_MODE) {
+      FastLED.setBrightness(b);
+      leds_changed = true;
+    }
+  }
+}
+
 void parse_led() {
   bool on = false;
 
@@ -1407,34 +1483,6 @@ void println(String s)
 
 }
 
-String gettermline() {
-  String inputWord = "";
-  char inputChar;
-
-  do
-  {
-    if (Serial.available())
-    {
-      inputChar = Serial.read();
-      Serial.print(inputChar);
-      if ((inputChar == 127) || (inputChar == 8))
-      {
-        if (inputWord.length() > 0)
-        {
-          inputWord = inputWord.substring(0, inputWord.length() - 1);
-        }
-      }
-      else
-      {
-        inputWord += inputChar;
-      }
-    }
-  } while (inputChar != '\r');
-
-  inputWord.trim();
-  return inputWord;
-}
-
 void error_occurred(String msg)
 {
   println(msg);
@@ -1476,6 +1524,7 @@ void print_help() {
   println("  SET BACK - set the text background colour");
   println("  END - specify the end of a program");
   println("  LED ON/OFF - turn an LED on/off");
+  println("  LED.BRIGHTNESS - set the LED brightness (1-255)");
   println("");
   println("INTERPRETER COMMANDS");
   println("  MEM - show free memory");
