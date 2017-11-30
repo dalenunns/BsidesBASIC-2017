@@ -10,7 +10,7 @@
 #include <WiFiClient.h>
 #include <ESPAsyncTCP.h>
 #include <ESPAsyncWebServer.h>
-
+#include <EEPROM.h>
 /*
    BSides Cape Town - BASIC for ESP8266
    By Dale Nunns (dale@stuff.za.net)
@@ -40,7 +40,7 @@ CRGB leds[NUM_LEDS];
 volatile bool leds_changed = false; //used to indicate to the main loop the leds have been updated
 volatile bool leds_fill = false;
 volatile byte led_fill_color[3] = {0, 0, 0};
-
+bool runOnce = false;
 String line = "";
 int cursor = 0;
 String token;
@@ -79,6 +79,8 @@ byte BADGE_MODE = BLINKY_MODE;
 */
 void setup()
 {
+  EEPROM.begin(512); //ensure the EEPROM is initialised
+
   //Serial is always available.
   Serial.begin(9600); //Serial port is currently set to 9600 Baud for the Serial Console.
   Serial.setTimeout(100000); //Timeout needs to be set higher than usual otherwise you can get timeouts waiting for keys etc.
@@ -90,8 +92,18 @@ void setup()
   //TODO: Change this as its a waist of memory in its current form.
   function_args["rnd"] = std::list<float>();
 
-  //Default is blinky mode (serial interface & LED's only)
-  SetupBlinkyMode();
+  //Check if our "go to config" byte is set in the eeprom.
+  byte eepromMode = EEPROM.read(0);
+
+  if (eepromMode == 0x80) {
+    EEPROM.write(0, 0x00);
+    EEPROM.commit();
+
+    SetupWifiConfigMode();
+  } else {
+    //Default is blinky mode (serial interface & LED's only)
+    SetupBlinkyMode();
+  }
 }
 
 //Setups Blinky mode which is running the BASIC interpreter on a serial console and the LED's
@@ -116,7 +128,20 @@ void SetupBlinkyMode() {
   run_startup();
 }
 
-bool runOnce = false;
+void LaunchWifiConfigMode() {
+  stop_program();
+  StartBurstAnimation();
+  if (!runOnce) {
+    runOnce = true;
+    EEPROM.write(0, 0x80);
+    EEPROM.commit();
+    delay(100);
+    ESP.restart();
+    //WiFi.forceSleepBegin(); wdt_reset(); ESP.restart(); while(1)wdt_reset();
+  }
+}
+
+
 //Sets up WIFI config mode which runs the HTTP server, badge emulator and telnet. NO LED's IN THIS MODE
 void SetupWifiConfigMode() {
   stop_program();
@@ -124,7 +149,6 @@ void SetupWifiConfigMode() {
   if (!runOnce) {
     runOnce = true;
     //Quick animation to show you're going into config mode, leave some LED's on so you can find victim's :-)
-    StartBurstAnimation();
     String ssid = "BADGE_" + getMacAddress();
 
     WiFi.softAP(ssid.c_str()); //Enable the soft AP, no password specified to make life easier for now.
@@ -198,7 +222,7 @@ void loop()
 {
   //See if the button was pressed to put the badge into WiFi mode.
   if (digitalRead(0) == 0) {
-    SetupWifiConfigMode();
+    LaunchWifiConfigMode();
   }
 
   if (BADGE_MODE == WIFI_MODE) {
@@ -294,8 +318,8 @@ void loop()
 
   ESP.wdtFeed(); //feed the watchdog timer so that it won't reset the esp.
 
-  if (BADGE_MODE == BLINKY_MODE) {
-    if (leds_changed) {
+  if (leds_changed) {
+    if (BADGE_MODE == BLINKY_MODE) {
       FastLED.show();
     }
   }
