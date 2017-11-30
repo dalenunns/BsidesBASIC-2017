@@ -1,3 +1,4 @@
+09  LED BRIGHTNESS 50
 10  let led = rnd / 66
 20  let r = rnd / 4
 30  let g = rnd / 4

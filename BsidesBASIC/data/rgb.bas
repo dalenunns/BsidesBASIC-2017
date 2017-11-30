@@ -1,3 +1,4 @@
+09   led brightness 50
 10   let r = 255
 20   let g = 0
 30   let b = 0

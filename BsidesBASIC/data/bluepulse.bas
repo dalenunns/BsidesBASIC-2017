@@ -1,4 +1,4 @@
-10   led brightness 0
+10   led brightness 1
 20   led fill rgb(0,0,255)
 30   for i = 0 to 50
 40   led brightness i
