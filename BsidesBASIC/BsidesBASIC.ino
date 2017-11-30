@@ -218,6 +218,8 @@ char inputChar;
 
 bool isRunning = false;
 
+byte state = 0;
+
 void loop()
 {
   //See if the button was pressed to put the badge into WiFi mode.
@@ -225,6 +227,63 @@ void loop()
     LaunchWifiConfigMode();
   }
 
+  switch (state) {
+    case 0:
+      updateTelnet();
+      ++state;
+      break;
+    case 1:
+      updateSerial();
+      ++state;
+      break;
+    case 2:
+      updateRunning();
+      ++state;
+      break;
+    case 3:
+      updateLEDs();
+      ++state;
+      break;
+    default:
+      state = 0;
+      break;
+  }
+
+  ESP.wdtFeed(); //feed the watchdog timer so that it won't reset the esp.
+}
+
+void updateSerial() {
+  if (Serial.available())
+  {
+    inputChar = Serial.read();
+    Serial.print(inputChar);
+    if ((inputChar == 127) || (inputChar == 8))
+    {
+      if (inputWord.length() > 0)
+      {
+        inputWord = inputWord.substring(0, inputWord.length() - 1);
+      }
+    }
+    else
+    {
+      inputWord += inputChar;
+    }
+
+    if (inputChar == '\r') {
+      inputWord.trim();
+      line = inputWord;
+      println("");
+      parse_command_line();
+      println("");
+      //Display the '>' prompt and wait for input
+      print("> ");
+
+      inputWord = ""; //reset everything
+    }
+  }
+}
+
+void updateTelnet() {
   if (BADGE_MODE == WIFI_MODE) {
     //check if there are any new clients
     if (telnetServer.hasClient()) {
@@ -273,38 +332,9 @@ void loop()
       }
     }
   }
+}
 
-  if (Serial.available())
-  {
-    inputChar = Serial.read();
-    Serial.print(inputChar);
-    if ((inputChar == 127) || (inputChar == 8))
-    {
-      if (inputWord.length() > 0)
-      {
-        inputWord = inputWord.substring(0, inputWord.length() - 1);
-      }
-    }
-    else
-    {
-      inputWord += inputChar;
-    }
-
-    if (inputChar == '\r') {
-      inputWord.trim();
-      line = inputWord;
-      println("");
-      parse_command_line();
-      println("");
-      //Display the '>' prompt and wait for input
-      print("> ");
-
-      inputWord = ""; //reset everything
-    }
-  }
-
-
-
+void updateRunning() {
   if (isRunning) {
     if (current_line != program.end()) {
       line = current_line->second;
@@ -315,9 +345,9 @@ void loop()
       isRunning = false;
     }
   }
+}
 
-  ESP.wdtFeed(); //feed the watchdog timer so that it won't reset the esp.
-
+void updateLEDs() {
   if (leds_changed) {
     if (BADGE_MODE == BLINKY_MODE) {
       FastLED.show();
@@ -1424,6 +1454,9 @@ void parse_led_fill() {
   if (BADGE_MODE == BLINKY_MODE) {
     fill_solid(leds, NUM_LEDS, CRGB(r, g, b));
     leds_changed = true;
+  } else {
+    byte l[4] = {255, r, g, b};
+    ws.binaryAll(l, 4);
   }
 }
 
@@ -1483,6 +1516,9 @@ void parse_led_set() {
 
   if (BADGE_MODE == BLINKY_MODE) {
     leds[ledNo].setRGB(r, g, b);
+  } else {
+    byte l[4] = {ledNo, r, g, b};
+    ws.binaryAll(l, 4);
   }
 
 }
@@ -1558,14 +1594,24 @@ void parse_led() {
     }
 
     if (BADGE_MODE == BLINKY_MODE) {
-
       if (on)
         leds[ledNo].setRGB(r, g, b);
       else
         leds[ledNo] = CRGB::Black;
 
       leds_changed = true;
+    } else {
+      if (on) {
+        byte l[4] = {ledNo, r, g, b};
+        ws.binaryAll(l, 4);
+      }
+      else {
+        byte l[4] = {ledNo, 0, 0, 0};
+        ws.binaryAll(l, 4);
+
+      }
     }
+
   }
 }
 
@@ -1774,19 +1820,10 @@ void onUpload(AsyncWebServerRequest * request, String filename, size_t index, ui
 
 void onEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventType type, void * arg, uint8_t *data, size_t len) {
   if (type == WS_EVT_CONNECT) {
-    //client connected
-    //Serial.printf("ws[%s][%u] connect\n", server->url(), client->id());
-    //client->printf("Hello Client %u :)", client->id());
     client->ping();
   } else if (type == WS_EVT_DISCONNECT) {
-    //client disconnected
-    //Serial.printf("ws[%s][%u] disconnect: %u\n", server->url(), client->id());
   } else if (type == WS_EVT_ERROR) {
-    //error was received from the other end
-    //Serial.printf("ws[%s][%u] error(%u): %s\n", server->url(), client->id(), *((uint16_t*)arg), (char*)data);
   } else if (type == WS_EVT_PONG) {
-    //pong message was received (in response to a ping request maybe)
-    //Serial.printf("ws[%s][%u] pong[%u]: %s\n", server->url(), client->id(), len, (len)?(char*)data:"");
   } else if (type == WS_EVT_DATA) {
     //data packet
     AwsFrameInfo * info = (AwsFrameInfo*)arg;
@@ -1794,33 +1831,11 @@ void onEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventTyp
       //the whole message is in a single frame and we got all of it's data
       //Serial.printf("ws[%s][%u] %s-message[%llu]: ", server->url(), client->id(), (info->opcode == WS_TEXT)?"text":"binary", info->len);
       if (info->opcode == WS_TEXT) {
-        data[len] = 0;
-        Serial.printf("%s\n", (char*)data);
+        //        data[len] = 0;
+        //        Serial.printf("%s\n", (char*)data);
       } else {
-        if (info->len == 4) {
-          if (data[0] < NUM_LEDS) {
-            leds[data[0]].setRGB(data[1], data[2], data[3]);
-
-            leds_changed = true;
-            ws.binaryAll(data, 4);
-
-          } else if (data[0] == 255) {
-            led_fill_color[0] = data[1];
-            led_fill_color[1] = data[2];
-            led_fill_color[2] = data[3];
-
-            leds_fill = true;
-            leds_changed = true;
-
-            ws.binaryAll(data, 4);
-          }
-        }
 
       }
-      //      if(info->opcode == WS_TEXT)
-      //        client->text("I got your text message");
-      //      else
-      //        client->binary("I got your binary message");
     }
   }
 }
