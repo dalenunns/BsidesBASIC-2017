@@ -47,7 +47,7 @@
 340 rem ##########################################
 350 rem ####          IDLE ANIMATION:          ###
 360 rem ##########################################
-370 led brightness 5
+370 led brightness 10
 410 for l = 0 to 4
 420 let x = 4 - l
 430 led on,x,rgb(255,255,255)
@@ -55,7 +55,7 @@
 450 led on,x,rgb(255,255,255)
 460 let x = 14 - l
 470 led on,x,rgb(255,255,255)
-480 sleep 200
+480 sleep 120
 490 if l = 0 then goto 570
 500 let x = 5 - l
 510 led off,x
@@ -68,6 +68,6 @@
 580 led off,0
 590 led off,9
 600 led off,10
-610 sleep 4000
+610 sleep 2000
 620 goto 410
 999 end

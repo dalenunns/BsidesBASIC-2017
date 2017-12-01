@@ -10,6 +10,7 @@
 #include <WiFiClient.h>
 #include <ESPAsyncTCP.h>
 #include <ESPAsyncWebServer.h>
+#include <SPIFFSEditor.h>
 #include <EEPROM.h>
 /*
    BSides Cape Town - BASIC for ESP8266
@@ -34,6 +35,8 @@
 
 #include "BsidesBASIC.h"
 
+const char* http_username = "admin";
+const char* http_password = "admin";
 #define NUM_LEDS 15 //TODO: Change this to match flux-capacitor design
 CRGB leds[NUM_LEDS];
 
@@ -58,7 +61,6 @@ bool DEBUG_MODE = false;
 const char *hostName = "badge2017";
 
 AsyncWebServer server(80);
-AsyncWebSocket ws("/ws");
 
 //Setup Telnet
 WiFiServer telnetServer(TELNET_PORT);
@@ -123,9 +125,8 @@ void SetupBlinkyMode() {
 
   printStartupHeader();
   //Display the '>' prompt and wait for input
-  print("> ");
-
   run_startup();
+  print("> ");
 }
 
 void LaunchWifiConfigMode() {
@@ -140,7 +141,6 @@ void LaunchWifiConfigMode() {
     //WiFi.forceSleepBegin(); wdt_reset(); ESP.restart(); while(1)wdt_reset();
   }
 }
-
 
 //Sets up WIFI config mode which runs the HTTP server, badge emulator and telnet. NO LED's IN THIS MODE
 void SetupWifiConfigMode() {
@@ -158,18 +158,20 @@ void SetupWifiConfigMode() {
     IPAddress myIP = WiFi.softAPIP();
     WiFi.hostname(hostName);
 
-    // attach AsyncWebSocket
-    ws.onEvent(onEvent);
-    server.addHandler(&ws);
+    server.addHandler(new SPIFFSEditor(http_username, http_password));
 
-    server.serveStatic("/", SPIFFS, "/");
+    server.on("/heap", HTTP_GET, [](AsyncWebServerRequest * request) {
+      request->send(200, "text/plain", String(ESP.getFreeHeap()));
+    });
 
-    // Catch-All Handlers
-    // Any request that can not find a Handler that canHandle it
-    // ends in the callbacks below.
-    server.onNotFound(onRequest);
-    server.onFileUpload(onUpload);
-    server.onRequestBody(onBody);
+    //    server.serveStatic("/", SPIFFS, "/").setDefaultFile("index.htm");
+    server.on("/", HTTP_GET, [](AsyncWebServerRequest * request) {
+      request->redirect("/edit");
+    });
+
+    server.onNotFound([](AsyncWebServerRequest * request) {
+      request->send(404);
+    });
 
     server.begin();
 
@@ -183,6 +185,10 @@ void SetupWifiConfigMode() {
     Serial.print("IP:");
     Serial.println(myIP);
     Serial.println("----------------------------------------------");
+
+    printStartupHeader();
+    //Display the '>' prompt and wait for input
+    print("> ");
   }
 }
 
@@ -227,6 +233,8 @@ void loop()
     LaunchWifiConfigMode();
   }
 
+  yield(); //give the background code a chance to run.
+
   switch (state) {
     case 0:
       updateTelnet();
@@ -257,11 +265,19 @@ void updateSerial() {
   {
     inputChar = Serial.read();
     Serial.print(inputChar);
+    if (DEBUG_MODE) {
+      Serial.print(inputChar, HEX);
+    }
     if ((inputChar == 127) || (inputChar == 8))
     {
       if (inputWord.length() > 0)
       {
         inputWord = inputWord.substring(0, inputWord.length() - 1);
+      }
+    } else if ((inputChar == 27)) {
+      if (isRunning) {
+        println("ESCAPE pressed - Break");
+        stop_program();
       }
     }
     else
@@ -311,6 +327,12 @@ void updateTelnet() {
           if (inputWord.length() > 0)
           {
             inputWord = inputWord.substring(0, inputWord.length() - 1);
+          }
+        }
+        else if ((inputChar == 27)) {
+          if (isRunning) {
+            println("ESCAPE pressed - Break");
+            stop_program();
           }
         }
         else
@@ -546,6 +568,7 @@ void parse_statement()
 
 void printStartupHeader() {
   println("");
+  println("ESCAPE to BREAK");
   println("BsidesBASIC v0.31.337 READY");
   printFreeRAM();
 }
@@ -1454,9 +1477,6 @@ void parse_led_fill() {
   if (BADGE_MODE == BLINKY_MODE) {
     fill_solid(leds, NUM_LEDS, CRGB(r, g, b));
     leds_changed = true;
-  } else {
-    byte l[4] = {255, r, g, b};
-    ws.binaryAll(l, 4);
   }
 }
 
@@ -1516,11 +1536,7 @@ void parse_led_set() {
 
   if (BADGE_MODE == BLINKY_MODE) {
     leds[ledNo].setRGB(r, g, b);
-  } else {
-    byte l[4] = {ledNo, r, g, b};
-    ws.binaryAll(l, 4);
   }
-
 }
 
 void parse_led_show() {
@@ -1600,18 +1616,7 @@ void parse_led() {
         leds[ledNo] = CRGB::Black;
 
       leds_changed = true;
-    } else {
-      if (on) {
-        byte l[4] = {ledNo, r, g, b};
-        ws.binaryAll(l, 4);
-      }
-      else {
-        byte l[4] = {ledNo, 0, 0, 0};
-        ws.binaryAll(l, 4);
-
-      }
     }
-
   }
 }
 
@@ -1719,13 +1724,14 @@ void print_help() {
   println("  DIR - list files in flash");
   println("  DEL - delete specified file from flash");
   println("  VIEW - display contents of file in flash");
-  println("  DEBUG - enable debug mode (development)");
   println("");
 }
 
 void load_program() {
+  stop_program();
   program.clear(); //Clear the current in memory program
   String file = parse_value();
+  if (!file.startsWith("/")) file = "/" + file;
   if (SPIFFS.exists(file)) {
     File loadFile = SPIFFS.open(file, "r");
     while (loadFile.available()) {
@@ -1757,6 +1763,7 @@ void view() {
 
 void save_program() {
   String file = parse_value();
+  if (!file.startsWith("/")) file = "/" + file;
   File saveFile = SPIFFS.open(file, "w");
   for (auto const &item : program)
   {
@@ -1772,12 +1779,15 @@ void save_program() {
 void dir() {
   Dir dir = SPIFFS.openDir("");
   while (dir.next()) {
-    println(dir.fileName());
+    if ((!dir.fileName().endsWith("gz")) && (!dir.fileName().endsWith("htm")) && (!dir.fileName().startsWith("/.")) && (!dir.fileName().endsWith("ico"))) {
+      println(dir.fileName());
+    }
   }
 }
 
 void del() {
   String file = parse_value();
+  if (!file.startsWith("/")) file = "/" + file;
   if (SPIFFS.exists(file)) {
     if (SPIFFS.remove(file)) {
       println(file + " - DELETED");
@@ -1810,35 +1820,26 @@ void onRequest(AsyncWebServerRequest * request) {
   request->send(404);
 }
 
-void onBody(AsyncWebServerRequest * request, uint8_t *data, size_t len, size_t index, size_t total) {
-  //Handle body
-}
+//void onBody(AsyncWebServerRequest * request, uint8_t *data, size_t len, size_t index, size_t total) {
+//  //Handle body
+//}
 
-void onUpload(AsyncWebServerRequest * request, String filename, size_t index, uint8_t *data, size_t len, bool final) {
-  //Handle upload
-}
-
-void onEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventType type, void * arg, uint8_t *data, size_t len) {
-  if (type == WS_EVT_CONNECT) {
-    client->ping();
-  } else if (type == WS_EVT_DISCONNECT) {
-  } else if (type == WS_EVT_ERROR) {
-  } else if (type == WS_EVT_PONG) {
-  } else if (type == WS_EVT_DATA) {
-    //data packet
-    AwsFrameInfo * info = (AwsFrameInfo*)arg;
-    if (info->final && info->index == 0 && info->len == len) {
-      //the whole message is in a single frame and we got all of it's data
-      //Serial.printf("ws[%s][%u] %s-message[%llu]: ", server->url(), client->id(), (info->opcode == WS_TEXT)?"text":"binary", info->len);
-      if (info->opcode == WS_TEXT) {
-        //        data[len] = 0;
-        //        Serial.printf("%s\n", (char*)data);
-      } else {
-
-      }
-    }
-  }
-}
+//void onUpload(AsyncWebServerRequest * request, String filename, size_t index, uint8_t *data, size_t len, bool final) {
+//  //  if (!index)
+//  //    Serial.printf("UploadStart: %s\n", filename.c_str());
+//  //  Serial.printf("%s", (const char*)data);
+//  //  if (final)
+//  //    Serial.printf("UploadEnd: %s (%u)\n", filename.c_str(), index + len);
+//
+//
+//  File saveFile = SPIFFS.open(filename, "a+");
+//  if (index)
+//    saveFile.seek(index, SeekSet);
+//  saveFile.write(data, len);
+//  saveFile.flush();
+//  saveFile.close();
+//
+//}
 
 String getMacAddress() {
   byte mac[6];
@@ -1856,5 +1857,4 @@ String getMacAddress() {
   cMac.toUpperCase();
   return cMac;
 }
-
 
