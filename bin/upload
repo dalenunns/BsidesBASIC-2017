@@ -1,4 +1,0 @@
-#!/bin/bash
-~/.arduino15/packages/esp8266/tools/esptool/0.4.12/esptool -cd ck -cb 230400 -cp /dev/ttyUSB0 -ca 0x00000 -cf BsidesBASIC.ino.bin
-read -n 1 -s -r -p "Press any key"
-~/.arduino15/packages/esp8266/tools/esptool/0.4.12/esptool -cd ck -cb 230400 -cp /dev/ttyUSB0 -ca 0x7B000 -cf BsidesBASIC.spiffs.bin

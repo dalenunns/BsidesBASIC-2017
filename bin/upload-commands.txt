@@ -1,3 +1,7 @@
-#!/bin/sh
-~/packages/esp8266/tools/esptool/0.4.12/esptool -cd ck -cb 230400 -cp /dev/ttyUSB0 -ca 0x00000 -cf BsidesBASIC.ino.bin
-~/packages/esp8266/tools/esptool/0.4.12/esptool -cd ck -cb 230400 -cp /dev/ttyUSB0 -ca 0x7B000 -cf BsidesBASIC.spiffs.bin
+The following is the command line to flash images to BSidesCapetown 2017 badge using esptool shipped with Arduino ESP8266.
+
+Main firmware image
+esptool -cd ck -cb 230400 -cp /dev/ttyUSB0 -ca 0x00000 -cf BsidesBASIC.ino.bin
+
+SPIFFS file image
+esptool -cd ck -cb 230400 -cp /dev/ttyUSB0 -ca 0x7B000 -cf BsidesBASIC.spiffs.bin

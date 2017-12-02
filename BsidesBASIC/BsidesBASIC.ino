@@ -28,9 +28,6 @@
 //FastLED library to control LED's
 #define FASTLED_ESP8266_RAW_PIN_ORDER //Sets the Pin Order to RAW mode see https://github.com/FastLED/FastLED/wiki/ESP8266-notes
 
-//#define FASTLED_INTERRUPT_RETRY_COUNT 0
-//#define FASTLED_ALLOW_INTERRUPTS 0
-
 #include "FastLED.h"
 
 #include "BsidesBASIC.h"
@@ -138,7 +135,6 @@ void LaunchWifiConfigMode() {
     EEPROM.commit();
     delay(100);
     ESP.restart();
-    //WiFi.forceSleepBegin(); wdt_reset(); ESP.restart(); while(1)wdt_reset();
   }
 }
 
@@ -1819,27 +1815,6 @@ void onRequest(AsyncWebServerRequest * request) {
   //Handle Unknown Request
   request->send(404);
 }
-
-//void onBody(AsyncWebServerRequest * request, uint8_t *data, size_t len, size_t index, size_t total) {
-//  //Handle body
-//}
-
-//void onUpload(AsyncWebServerRequest * request, String filename, size_t index, uint8_t *data, size_t len, bool final) {
-//  //  if (!index)
-//  //    Serial.printf("UploadStart: %s\n", filename.c_str());
-//  //  Serial.printf("%s", (const char*)data);
-//  //  if (final)
-//  //    Serial.printf("UploadEnd: %s (%u)\n", filename.c_str(), index + len);
-//
-//
-//  File saveFile = SPIFFS.open(filename, "a+");
-//  if (index)
-//    saveFile.seek(index, SeekSet);
-//  saveFile.write(data, len);
-//  saveFile.flush();
-//  saveFile.close();
-//
-//}
 
 String getMacAddress() {
   byte mac[6];
