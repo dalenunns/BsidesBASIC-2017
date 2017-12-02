@@ -164,7 +164,7 @@ void SetupWifiConfigMode() {
       request->send(200, "text/plain", String(ESP.getFreeHeap()));
     });
 
-    //    server.serveStatic("/", SPIFFS, "/").setDefaultFile("index.htm");
+    server.serveStatic("/ace.js", SPIFFS, "/ace.js");
     server.on("/", HTTP_GET, [](AsyncWebServerRequest * request) {
       request->redirect("/edit");
     });
